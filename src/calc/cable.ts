@@ -10,7 +10,8 @@ import {
   type CoreConfig,
   type InstallMethod,
 } from './bs7671Tables'
-import { roundUpToStandard, STANDARD_CABLE_SIZES } from './tables'
+import { calcPfc } from './pfc'
+import { roundUpToStandard, STANDARD_CABLE_SIZES, type Phase } from './tables'
 
 export interface CableSizingInput {
   designCurrent: number // Ib, A
@@ -222,4 +223,98 @@ export function sizeEarthConductorAdiabatic(
   const required = Math.sqrt(faultCurrentA ** 2 * disconnectionTimeS) / k
   const { value } = roundUpToStandard(required, STANDARD_CABLE_SIZES)
   return { cpcMm2: value, ruleApplied: `Adiabatic equation: S = sqrt(I^2 t) / k (required ${required.toFixed(2)}mm^2)` }
+}
+
+export interface VoltageDropPfcInput {
+  designCurrent: number
+  existingPf: number
+  targetPf: number
+  systemVoltage: number
+  phase: Phase
+  lengthM: number
+  sizeMm2: number
+  coreConfig: CoreConfig
+  material: ConductorMaterial
+  installMethod: InstallMethod
+  ambientTempC: number
+  groupedCircuits: number
+  customMvPerAPerM?: number
+}
+
+export interface VoltageDropPfcResult {
+  realPowerKw: number
+  requiredKvar: number
+  capacitorCurrent: number
+  newCurrent: number
+  before: VoltageDropTableResult
+  after: VoltageDropTableResult
+}
+
+/**
+ * Impact of power-factor correction (a capacitor bank) on voltage drop. For the same real
+ * power P, current is inversely proportional to PF (I = P / (sqrt(3) x V x PF) for 3-phase, or
+ * P / (V x PF) for 1-phase) - correcting PF towards 1 reduces the current the cable actually
+ * carries, so voltage drop (which is directly proportional to current) falls. Reuses the PFC
+ * capacitor sizing (calc/pfc.ts) and the voltage-drop table lookup (both before and after, so
+ * the resistance/reactance combination and Ct temperature correction are each re-evaluated at
+ * their own current and PF) rather than approximating.
+ */
+export function calcVoltageDropPfcImpact(input: VoltageDropPfcInput): VoltageDropPfcResult {
+  const {
+    designCurrent,
+    existingPf,
+    targetPf,
+    systemVoltage,
+    phase,
+    lengthM,
+    sizeMm2,
+    coreConfig,
+    material,
+    installMethod,
+    ambientTempC,
+    groupedCircuits,
+    customMvPerAPerM,
+  } = input
+
+  const realPowerKw =
+    (phase === 3
+      ? Math.sqrt(3) * systemVoltage * designCurrent * existingPf
+      : systemVoltage * designCurrent * existingPf) / 1000
+
+  const pfc = calcPfc({ kW: realPowerKw, existingPf, targetPf, voltage: systemVoltage, phase })
+  const newCurrent = designCurrent * (existingPf / Math.max(targetPf, 0.01))
+
+  const before = calcVoltageDropBS7671({
+    designCurrent,
+    lengthM,
+    sizeMm2,
+    coreConfig,
+    material,
+    powerFactor: customMvPerAPerM !== undefined ? undefined : existingPf,
+    installMethod,
+    ambientTempC,
+    groupedCircuits,
+    customMvPerAPerM,
+  })
+  const after = calcVoltageDropBS7671({
+    designCurrent: newCurrent,
+    lengthM,
+    sizeMm2,
+    coreConfig,
+    material,
+    powerFactor: customMvPerAPerM !== undefined ? undefined : targetPf,
+    installMethod,
+    ambientTempC,
+    groupedCircuits,
+    customMvPerAPerM,
+  })
+
+  return {
+    realPowerKw,
+    requiredKvar: pfc.requiredKvar,
+    capacitorCurrent: pfc.capacitorCurrent,
+    newCurrent,
+    before,
+    after,
+  }
 }

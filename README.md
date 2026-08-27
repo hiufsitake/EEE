@@ -24,7 +24,10 @@ tables rather than field heuristics.
   Installation method/ambient/grouping feed into the BS7671 Appendix 4 "Ct" operating-temperature
   correction (a cable loaded below its corrected capacity runs cooler, so its real resistance and
   voltage drop are lower than the raw table value). A known mV/A/m value (e.g. from a
-  manufacturer datasheet) can be entered directly instead of using the table.
+  manufacturer datasheet) can be entered directly instead of using the table. The compliance
+  limit is selectable (BS7671 5%, JKR/MS IEC 60364-5-52 4%, or custom), and an optional panel
+  shows the effect of power-factor-correcting the load (current is inversely proportional to
+  PF for the same real power, so a capacitor bank reduces both current and voltage drop).
 - **Power Factor Correction** - required capacitor bank kVAR to reach a target power factor
   (Qc = P x (tan(phi1) - tan(phi2))).
 - **Transformer Sizing** - full load current and sizing from a connected load and demand factor.
