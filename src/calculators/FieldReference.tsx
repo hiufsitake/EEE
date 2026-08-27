@@ -17,9 +17,10 @@ export default function FieldReference() {
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
           Quick heuristics used on-site for a fast sanity check or first estimate. The
           calculators in this app do <strong>not</strong> use these - they compute from exact
-          formulas and BS7671/IEC standard tables. Keep this page as a reference for eyeballing a
-          number quickly; always confirm the final design with the calculators (or the full
-          standard) before committing to it.
+          formulas and IEC 60364 standard tables (as adopted in Malaysia in MS IEC 60364, and in
+          the UK as BS7671). Keep this page as a reference for eyeballing a number quickly;
+          always confirm the final design with the calculators (or the full standard) before
+          committing to it.
         </p>
 
         <div className="space-y-3">
@@ -84,7 +85,7 @@ export default function FieldReference() {
               drops above the ~130A breakpoint. Go up one standard size if the run is over ~50m
               or is routed through high ambient heat. This does not account for installation
               method, grouping, or actual ambient temperature - use the Cable &amp; Earth Sizing
-              calculator (BS7671 Table 4D4A) for a real design.
+              calculator (IEC 60364-5-52 / MS IEC 60364-5-52 ampacity method) for a real design.
             </p>
           </Rule>
 
@@ -96,8 +97,9 @@ export default function FieldReference() {
             </ul>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Unlike the other rules on this page, this one is not a field shortcut - it is
-              BS7671/IEC 60364-5-54's own simplified alternative Table 54.7 to the full adiabatic
-              equation (S = sqrt(I^2 t) / k), and is what the Cable &amp; Earth and Motor Panel
+              IEC 60364-5-54's own Table 54.7, a simplified alternative to the full adiabatic
+              equation (S = sqrt(I^2 t) / k), adopted in Malaysia as MS IEC 60364-5-54 and in the
+              UK as BS7671 Table 54.7 - and is what the Cable &amp; Earth and Motor Panel
               calculators use directly.
             </p>
           </Rule>

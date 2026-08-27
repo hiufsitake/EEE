@@ -89,9 +89,10 @@ function App() {
           className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          Calculations use standard formulas and BS7671/IEC reference tables - always verify
-          installation-specific factors (method, grouping, ambient temperature) and manufacturer
-          data before finalizing a design.
+          Calculations use standard formulas and IEC 60364 reference tables (as adopted in
+          Malaysia in MS IEC 60364, and in the UK as BS7671) - always verify installation-specific
+          factors (method, grouping, ambient temperature) and manufacturer data before finalizing
+          a design.
         </footer>
       </main>
       <InstallBanner />

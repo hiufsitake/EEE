@@ -44,8 +44,9 @@ const SQRT3 = Math.sqrt(3)
  * demand is already running. Starting all motors simultaneously produces much higher combined
  * inrush.
  *
- * Cable and earth sizing use BS7671 Table 4D4A/4D4B (copper SWA/PVC) with ambient temperature
- * and grouping correction factors - see calc/cable.ts and calc/bs7671Tables.ts.
+ * Cable and earth sizing use the IEC 60364-5-52 ampacity method (MS IEC 60364-5-52 / BS7671
+ * Appendix 4, copper SWA/PVC) with ambient temperature and grouping correction factors - see
+ * calc/cable.ts and calc/bs7671Tables.ts.
  */
 export function calcMotorPanel(input: MotorPanelInput): MotorPanelResult {
   const {

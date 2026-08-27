@@ -40,8 +40,9 @@ export default function CableCalculator() {
       <Card>
         <SectionTitle>Cable &amp; Earth (CPC) Sizing</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          BS7671 Table 4D4A ampacity (copper, SWA/PVC 70C) with ambient temperature (Table 4B1)
-          and grouping (Table 4C1) correction factors: It = Ib / (Ca x Cg).
+          IEC 60364-5-52 ampacity method (MS IEC 60364-5-52 / BS7671 Appendix 4): armoured
+          SWA/PVC copper cable, 70C, with ambient temperature and grouping correction factors -
+          It = Ib / (Ca x Cg).
         </p>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -103,7 +104,7 @@ export default function CableCalculator() {
         {cable.exceedsTable && (
           <div className="mt-3">
             <Note>
-              Required current exceeds the BS7671 Table 4D4A range for this installation method -
+              Required current exceeds the ampacity table's range for this installation method -
               consider parallel runs or busbar trunking.
             </Note>
           </div>
@@ -113,9 +114,10 @@ export default function CableCalculator() {
         </div>
         <div className="mt-3">
           <Note>
-            Table 4D4A covers multicore armoured (SWA) 70C PVC-insulated copper cable. For other
-            constructions (single-core, XLPE/90C, aluminium) use the corresponding BS7671/IEC
-            table for that cable type.
+            This covers multicore armoured (SWA) 70C PVC-insulated copper cable (the same
+            reference table used by both BS7671 and, as MS IEC 60364-5-52, Malaysian practice).
+            For other constructions (single-core, XLPE/90C, aluminium) use the manufacturer's
+            IEC 60502-1 datasheet or the corresponding IEC 60364-5-52 table for that cable type.
           </Note>
         </div>
       </Card>

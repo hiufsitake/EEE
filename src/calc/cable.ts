@@ -32,10 +32,11 @@ export interface CableSizingResult {
 }
 
 /**
- * Cable sizing to BS7671 Table 4D4A (copper, SWA/PVC, 70C thermoplastic), applying ambient
- * temperature (Table 4B1) and grouping (Table 4C1) correction factors:
+ * Cable sizing to the IEC 60364-5-52 (MS IEC 60364-5-52 / BS7671 Appendix 4) ampacity method:
  *   It = Ib / (Ca x Cg),  select smallest tabulated size with rating >= It
  * so that the corrected in-service capacity Iz = tabulated x Ca x Cg >= Ib.
+ * Base ampacity figures are for armoured (SWA) copper/PVC, 70C thermoplastic (BS7671 Table
+ * 4D4A - see calc/bs7671Tables.ts for why this specific construction table is used).
  */
 export function sizeCableBS7671(input: CableSizingInput): CableSizingResult {
   const { designCurrent, installMethod, coreConfig, ambientTempC, groupedCircuits } = input
@@ -106,16 +107,18 @@ export interface VoltageDropTableResult {
 }
 
 /**
- * Voltage drop from BS7671 Table 4D4B mV/A/m data (Table 4D4A companion table). Copper values
- * are the table's own published figures; aluminium values are derived from them by scaling
- * resistance by the IEC 60228 resistivity ratio (reactance is left unchanged - it depends on
- * conductor geometry/spacing, not material) - see calc/bs7671Tables.ts.
+ * Voltage drop from BS7671 Table 4D4B mV/A/m data (companion to Table 4D4A ampacity, for the
+ * same armoured SWA/PVC construction). Copper values are the table's own published figures;
+ * aluminium values are derived from them by scaling resistance by the IEC 60228 resistivity
+ * ratio (reactance is left unchanged - it depends on conductor geometry/spacing, not material)
+ * - see calc/bs7671Tables.ts.
  *
  * The table's mV/A/m figures assume the conductor is at its full rated temperature (70C). A
  * cable loaded below its actual (installation-method/ambient/grouping-corrected) capacity Iz
- * runs cooler, so its real resistance and voltage drop are lower - the BS7671 Appendix 4 "Ct"
- * factor corrects for this. This is why installation method matters here even though the base
- * mV/A/m table itself does not vary by method.
+ * runs cooler, so its real resistance and voltage drop are lower - the IEC 60364-5-52 (MS IEC
+ * 60364-5-52 / BS7671 Appendix 4) "Ct" temperature correction factor corrects for this. This is
+ * why installation method matters here even though the base mV/A/m table itself does not vary
+ * by method.
  *
  * For parallel sets, ampacity/ Ct use the per-cable current against a single cable's rating,
  * while voltage drop uses the combined (divided) mV/A/m with the total current - both give the
@@ -231,22 +234,32 @@ export interface EarthSizingResult {
 
 /**
  * Protective earth / CPC conductor sizing from phase conductor size (same material CPC),
- * per BS7671 Table 54.7 / IEC 60364-5-54 (the standard's own simplified alternative to the
- * full adiabatic equation S = sqrt(I^2 t) / k, for use when fault current and disconnection
- * time have not been separately calculated):
+ * per IEC 60364-5-54 Table 54.7 (adopted in Malaysia as MS IEC 60364-5-54, and in the UK as
+ * BS7671 Table 54.7) - the standard's own simplified alternative to the full adiabatic
+ * equation S = sqrt(I^2 t) / k, for use when fault current and disconnection time have not
+ * been separately calculated:
  *  - phase <= 16mm^2: CPC = phase size
  *  - 16 < phase <= 35mm^2: CPC = 16mm^2
  *  - phase > 35mm^2: CPC = phase / 2, rounded up to a standard size
  */
 export function sizeEarthConductor(phaseMm2: number): EarthSizingResult {
   if (phaseMm2 <= 16) {
-    return { cpcMm2: phaseMm2, ruleApplied: 'Table 54.7: Phase <= 16mm^2 -> CPC = phase size' }
+    return {
+      cpcMm2: phaseMm2,
+      ruleApplied: 'IEC 60364-5-54 Table 54.7: Phase <= 16mm^2 -> CPC = phase size',
+    }
   }
   if (phaseMm2 <= 35) {
-    return { cpcMm2: 16, ruleApplied: 'Table 54.7: 16mm^2 < Phase <= 35mm^2 -> CPC = 16mm^2' }
+    return {
+      cpcMm2: 16,
+      ruleApplied: 'IEC 60364-5-54 Table 54.7: 16mm^2 < Phase <= 35mm^2 -> CPC = 16mm^2',
+    }
   }
   const { value } = roundUpToStandard(phaseMm2 / 2, STANDARD_CABLE_SIZES)
-  return { cpcMm2: value, ruleApplied: 'Table 54.7: Phase > 35mm^2 -> CPC = phase / 2 (rounded up)' }
+  return {
+    cpcMm2: value,
+    ruleApplied: 'IEC 60364-5-54 Table 54.7: Phase > 35mm^2 -> CPC = phase / 2 (rounded up)',
+  }
 }
 
 /**

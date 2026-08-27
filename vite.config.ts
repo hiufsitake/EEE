@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: {
         name: 'EEE Toolkit - Electrical Engineering Calculators',
         short_name: 'EEE Toolkit',
-        description: 'Electrical engineering calculators: MCCB/motor panel sizing, genset sizing, cable & earth sizing, voltage drop, power factor correction, transformer sizing.',
+        description: 'Electrical engineering calculators (IEC 60364 / MS IEC 60364): MCCB/motor panel sizing, genset sizing, cable & earth sizing, voltage drop, power factor correction, transformer sizing.',
         theme_color: '#0284c7',
         background_color: '#f4f5f7',
         display: 'standalone',

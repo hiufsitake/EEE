@@ -1,8 +1,17 @@
-// Reproduced from BS7671:2018 Wiring Regulations, Table 4D4A / 4D4B:
-// Multicore armoured (SWA) 70C thermoplastic (PVC) insulated cables, copper conductors.
-// Ambient air temperature 30C, ground ambient 20C, conductor operating temperature 70C.
+// Ampacity/voltage-drop/correction-factor methodology per IEC 60364-5-52 (adopted in Malaysia
+// as MS IEC 60364-5-52, and in the UK as BS7671 Appendix 4) - the "It = Ib / (Ca x Cg)" sizing
+// rule and the Ct temperature-correction formula are the IEC standard's own, not BS-specific.
+// The underlying generic (non-armoured) ampacity numbers are independently confirmed identical
+// between IEC 60364-5-52's own Table B.52.2/B.52.4 and BS7671's equivalent tables.
+//
+// IEC 60364-5-52 does not itself publish a table for multicore ARMOURED (SWA) construction -
+// that is specific cable-product data (per the relevant cable standard, e.g. IEC 60502-1, or
+// the manufacturer's datasheet). The armoured SWA/PVC figures below are BS7671 Table 4D4A/4D4B
+// (70C thermoplastic, copper conductors, 30C ambient air / 20C ground) - a widely used
+// reference for this construction, including in Malaysian practice, but verify against the
+// actual Malaysian-approved cable manufacturer's IEC 60502-1 datasheet for critical designs.
 // Source cross-checked against a cable-manufacturer reproduction of the published BS7671
-// table (Eland Cables). Verify against the current edition of BS7671 for critical designs.
+// table (Eland Cables).
 
 export type InstallMethod = 'C' | 'E' | 'D1' | 'D2'
 export type CoreConfig = 'twoCore' | 'threeOrFourCore' // 2-core single-phase/DC vs 3/4-core three-phase
@@ -86,7 +95,8 @@ const VD_THREE_PHASE: VdEntry[] = [
   { z: 0.16, r: 0.1, x: 0.125 },
 ]
 
-// Table 4B1 - rating factor Ca for ambient air temperatures other than 30C, 70C thermoplastic.
+// Ambient temperature rating factor Ca, 70C thermoplastic - IEC 60364-5-52 Table B.52.14
+// (MS IEC 60364-5-52 / BS7671 Table 4B1).
 export const AMBIENT_CORRECTION_70C: { tempC: number; factor: number }[] = [
   { tempC: 25, factor: 1.03 },
   { tempC: 30, factor: 1.0 },
@@ -99,7 +109,8 @@ export const AMBIENT_CORRECTION_70C: { tempC: number; factor: number }[] = [
   { tempC: 65, factor: 0.35 },
 ]
 
-// Table 4C1 - grouping factor Cg for a single layer of multicore cables touching.
+// Grouping factor Cg for a single layer of multicore cables touching - IEC 60364-5-52 Table
+// B.52.17 (MS IEC 60364-5-52 / BS7671 Table 4C1).
 export const GROUPING_CORRECTION: { circuits: number; factor: number }[] = [
   { circuits: 1, factor: 1.0 },
   { circuits: 2, factor: 0.8 },
@@ -136,12 +147,12 @@ export type ConductorMaterial = 'copper' | 'aluminium'
 // so for a given nominal cross-section it is taken as unchanged; only resistance is scaled.
 export const ALUMINIUM_RESISTIVITY_RATIO = 1.64
 
-// Table 4D4A/4D4B reference conditions.
+// Reference conditions for the armoured SWA/PVC ampacity/voltage-drop tables above.
 export const RATED_CONDUCTOR_TEMP_C = 70 // 70C thermoplastic (PVC)
 export const REFERENCE_AMBIENT_C = 30 // ambient assumed by the tabulated (uncorrected) ampacity
 
 // Inferred absolute-zero-of-resistance offset used in the standard R2/R1 = (T0+t2)/(T0+t1)
-// temperature/resistance relationship (BS7671 Appendix 4 / IET On-Site Guide Ct factor).
+// temperature/resistance relationship (IEC 60364-5-52 / BS7671 Appendix 4 Ct factor).
 const INFERRED_ZERO_OFFSET: Record<ConductorMaterial, number> = {
   copper: 234.5,
   aluminium: 228,
@@ -153,7 +164,8 @@ export interface TemperatureCorrectionResult {
 }
 
 /**
- * BS7671 Appendix 4 "Ct" temperature correction for voltage drop: a cable loaded below its
+ * IEC 60364-5-52 (MS IEC 60364-5-52 / BS7671 Appendix 4) "Ct" temperature correction for
+ * voltage drop: a cable loaded below its
  * corrected current-carrying capacity (Iz) runs cooler than the table's rated conductor
  * temperature, so its real resistance (and voltage drop) is lower than the tabulated value.
  * Installation method/ambient/grouping matter here because they determine Iz.

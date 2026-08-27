@@ -68,8 +68,9 @@ export default function MotorPanelCalculator() {
       <Card>
         <SectionTitle>Motor Control Panel Sizing</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Incoming MCCB, cable (BS7671 Table 4D4A) and earth sizing from the panel's Total
-          Connected Load and Maximum Demand, plus the largest motor's starting-surge demand.
+          Incoming MCCB, cable (IEC 60364-5-52 ampacity method / MS IEC 60364-5-52) and earth
+          sizing from the panel's Total Connected Load and Maximum Demand, plus the largest
+          motor's starting-surge demand.
         </p>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -185,7 +186,7 @@ export default function MotorPanelCalculator() {
           <ResultStat label="Incoming running current" value={fmt(result.incomingRunningA)} unit="A" />
           <ResultStat label="Incoming MCCB" value={fmt(result.incomingMccbA, 0)} unit="A" highlight />
           <ResultStat
-            label="Incoming cable (BS7671)"
+            label="Incoming cable"
             value={result.incomingCable.selectedSizeMm2 !== null ? fmt(result.incomingCable.selectedSizeMm2, 1) : 'N/A'}
             unit="mm2"
             highlight
@@ -213,7 +214,7 @@ export default function MotorPanelCalculator() {
         {result.incomingCable.selectedSizeMm2 === null && (
           <div className="mt-3">
             <Note>
-              Required current exceeds the BS7671 Table 4D4A range for this installation method -
+              Required current exceeds the ampacity table's range for this installation method -
               consider parallel runs or busbar trunking.
             </Note>
           </div>
@@ -226,9 +227,9 @@ export default function MotorPanelCalculator() {
             assumes the largest motor starts while the rest of the demand is already running
             (staggered/cascaded starting) - starting everything at once produces much higher
             combined inrush and will nuisance-trip the incoming MCCB and cause excessive voltage
-            dip. Cable/earth sizing use BS7671 Table 4D4A/4D4B (copper SWA/PVC) and Table 54.7 -
-            verify installation method, grouping and ambient temperature match the real site
-            conditions.
+            dip. Cable/earth sizing use the IEC 60364-5-52 / MS IEC 60364-5-52 ampacity method
+            (armoured copper SWA/PVC construction) and IEC 60364-5-54 Table 54.7 - verify
+            installation method, grouping and ambient temperature match the real site conditions.
           </Note>
         </div>
       </Card>

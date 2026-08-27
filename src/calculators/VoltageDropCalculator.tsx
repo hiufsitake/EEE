@@ -251,7 +251,9 @@ export default function VoltageDropCalculator() {
       <Card>
         <SectionTitle>Cable &amp; Route</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          BS7671 Table 4D4B mV/A/m data (SWA/PVC 70C) - the same cable as Table 4D4A ampacity.
+          Armoured SWA/PVC copper cable, 70C mV/A/m data (BS7671 Table 4D4B, the same reference
+          also used in Malaysian practice as MS IEC 60364-5-52) - the same cable as the ampacity
+          table above.
         </p>
 
         <div className="mb-3">
@@ -437,10 +439,10 @@ export default function VoltageDropCalculator() {
             <Note>
               The tabulated mV/A/m figures assume the conductor is at its full rated 70C - which
               only happens when it's loaded right up to its corrected capacity (Iz). Installation
-              method, ambient temperature and grouping change Iz (BS7671 Tables 4D4A/4B1/4C1), and
-              a cable loaded below Iz runs cooler, so its real resistance and voltage drop are
-              lower than the raw table value - the BS7671 Appendix 4 "Ct" temperature correction
-              factor applied above accounts for this.
+              method, ambient temperature and grouping change Iz, and a cable loaded below Iz
+              runs cooler, so its real resistance and voltage drop are lower than the raw table
+              value - the IEC 60364-5-52 (MS IEC 60364-5-52 / BS7671 Appendix 4) "Ct" temperature
+              correction factor applied above accounts for this.
             </Note>
           </div>
         )}
