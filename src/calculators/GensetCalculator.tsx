@@ -107,7 +107,7 @@ export default function GensetCalculator() {
                     id={`label-${l.id}`}
                     value={l.label}
                     onChange={(e) => updateLoad(l.id, { label: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-sky-500 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   />
                 </div>
                 <NumberField
