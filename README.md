@@ -17,17 +17,21 @@ tables rather than field heuristics.
 - **Cable & Earth (CPC) Sizing** - BS7671 Table 4D4A ampacity (copper, SWA/PVC, 70C) for
   installation methods C/E/D1/D2, with Table 4B1 ambient-temperature and Table 4C1 grouping
   correction factors (It = Ib / (Ca x Cg)). Earth/CPC sizing follows Table 54.7.
-- **Voltage Drop** - BS7671 Table 4D4B mV/A/m data for the same cable, using tabulated
-  impedance or the resistance/reactance combined with the circuit's power factor
-  (r cos-phi + x sin-phi) for cables 25mm2 and above. Supports copper (published table values)
+- **Voltage Drop** - load can be entered directly as a current or derived from a connected kW
+  rating (with efficiency and an actual-load-demand factor, e.g. motors run below their duty
+  rating). Uses BS7671 Table 4D4B mV/A/m data for the same cable as Table 4D4A ampacity, with
+  tabulated impedance or the resistance/reactance combined with the circuit's power factor
+  (r cos-phi + x sin-phi) for cables 25mm2 and above; supports copper (published table values)
   or aluminium (resistance scaled by the IEC 60228 resistivity ratio, reactance unchanged).
-  Installation method/ambient/grouping feed into the BS7671 Appendix 4 "Ct" operating-temperature
-  correction (a cable loaded below its corrected capacity runs cooler, so its real resistance and
-  voltage drop are lower than the raw table value). A known mV/A/m value (e.g. from a
-  manufacturer datasheet) can be entered directly instead of using the table. The compliance
-  limit is selectable (BS7671 5%, JKR/MS IEC 60364-5-52 4%, or custom), and an optional panel
-  shows the effect of power-factor-correcting the load (current is inversely proportional to
-  PF for the same real power, so a capacitor bank reduces both current and voltage drop).
+  Supports parallel cable sets (mV/A/m divided by the set count, ampacity/ Ct evaluated per
+  cable). Installation method/ambient/grouping feed into the BS7671 Appendix 4 "Ct"
+  operating-temperature correction (a cable loaded below its corrected capacity runs cooler, so
+  its real resistance and voltage drop are lower than the raw table value). A known mV/A/m value
+  (e.g. from a manufacturer datasheet) can be entered directly instead of using the table. The
+  compliance limit is selectable (BS7671 5%, JKR/MS IEC 60364-5-52 4%, or custom); the app
+  reverse-calculates the maximum allowable current for that limit, and an optional panel
+  auto-suggests the power factor a capacitor bank would need to hit it (current is inversely
+  proportional to PF for the same real power) and shows the before/after voltage drop.
 - **Power Factor Correction** - required capacitor bank kVAR to reach a target power factor
   (Qc = P x (tan(phi1) - tan(phi2))).
 - **Transformer Sizing** - full load current and sizing from a connected load and demand factor.

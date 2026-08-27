@@ -71,7 +71,7 @@ export function sizeCableBS7671(input: CableSizingInput): CableSizingResult {
 }
 
 export interface VoltageDropTableInput {
-  designCurrent: number
+  designCurrent: number // total circuit current (across all parallel sets)
   lengthM: number
   sizeMm2: number
   coreConfig: CoreConfig
@@ -80,20 +80,27 @@ export interface VoltageDropTableInput {
   installMethod: InstallMethod
   ambientTempC: number
   groupedCircuits: number
-  // If given, use this mV/A/m value directly (e.g. from a manufacturer datasheet) instead of
-  // the BS7671 Table 4D4B lookup - skips the material derivation and Ct temperature correction,
-  // since neither the resistance/reactance split nor the operating condition are known for an
-  // arbitrary supplied figure.
+  // Number of cables run in parallel per phase to share the total current (e.g. "2 runs of
+  // 185mm^2"). The per-cable current (designCurrent / parallelSets) is what each cable actually
+  // carries - used for the ampacity/Ct lookup - while the combined mV/A/m (single-cable value
+  // divided by parallelSets) combines with the total current to give the same voltage drop.
+  parallelSets?: number
+  // If given, treat this as the SINGLE-cable/single-set mV/A/m value (e.g. from a manufacturer
+  // datasheet) instead of the BS7671 Table 4D4B lookup - skips the material derivation and Ct
+  // temperature correction, since neither the resistance/reactance split nor the operating
+  // condition are known for an arbitrary supplied figure. Still divided by parallelSets.
   customMvPerAPerM?: number
 }
 
 export interface VoltageDropTableResult {
-  mvPerAPerM: number // the value actually used (z, or r*cosphi+x*sinphi), after the Ct correction
+  mvPerAPerMSingle: number // per single cable/set, before dividing by parallelSets
+  mvPerAPerM: number // combined (mvPerAPerMSingle / parallelSets) - the value actually used
   voltDrop: number
   found: boolean
-  tabulatedCapacityAtSize: number | null
-  correctedCapacityAtSize: number | null // Iz = tabulated x Ca x Cg, at this install method/ambient/grouping
-  loadRatio: number | null // Ib / Iz, capped at 1
+  perCableCurrent: number // designCurrent / parallelSets
+  tabulatedCapacityAtSize: number | null // per single cable
+  correctedCapacityAtSize: number | null // Iz = tabulated x Ca x Cg, per single cable
+  loadRatio: number | null // perCableCurrent / Iz, capped at 1
   estimatedConductorTempC: number
   ct: number
 }
@@ -109,6 +116,10 @@ export interface VoltageDropTableResult {
  * runs cooler, so its real resistance and voltage drop are lower - the BS7671 Appendix 4 "Ct"
  * factor corrects for this. This is why installation method matters here even though the base
  * mV/A/m table itself does not vary by method.
+ *
+ * For parallel sets, ampacity/ Ct use the per-cable current against a single cable's rating,
+ * while voltage drop uses the combined (divided) mV/A/m with the total current - both give the
+ * same result as scaling the single-cable mV/A/m by the per-cable current directly.
  */
 export function calcVoltageDropBS7671(input: VoltageDropTableInput): VoltageDropTableResult {
   const {
@@ -123,12 +134,17 @@ export function calcVoltageDropBS7671(input: VoltageDropTableInput): VoltageDrop
     groupedCircuits,
     customMvPerAPerM,
   } = input
+  const parallelSets = Math.max(input.parallelSets ?? 1, 1)
+  const perCableCurrent = designCurrent / parallelSets
 
   if (customMvPerAPerM !== undefined) {
+    const mvPerAPerM = customMvPerAPerM / parallelSets
     return {
-      mvPerAPerM: customMvPerAPerM,
-      voltDrop: (customMvPerAPerM * designCurrent * lengthM) / 1000,
+      mvPerAPerMSingle: customMvPerAPerM,
+      mvPerAPerM,
+      voltDrop: (mvPerAPerM * designCurrent * lengthM) / 1000,
       found: true,
+      perCableCurrent,
       tabulatedCapacityAtSize: null,
       correctedCapacityAtSize: null,
       loadRatio: null,
@@ -140,9 +156,11 @@ export function calcVoltageDropBS7671(input: VoltageDropTableInput): VoltageDrop
   const entry = lookupVdEntry(coreConfig, sizeMm2, material)
   if (!entry) {
     return {
+      mvPerAPerMSingle: 0,
       mvPerAPerM: 0,
       voltDrop: 0,
       found: false,
+      perCableCurrent,
       tabulatedCapacityAtSize: null,
       correctedCapacityAtSize: null,
       loadRatio: null,
@@ -156,33 +174,54 @@ export function calcVoltageDropBS7671(input: VoltageDropTableInput): VoltageDrop
   const groupingFactor = groupingCorrectionFactor(groupedCircuits)
   const correctedCapacityAtSize =
     tabulatedCapacityAtSize !== null ? tabulatedCapacityAtSize * ambientFactor * groupingFactor : null
-  const loadRatio = correctedCapacityAtSize ? Math.min(designCurrent / correctedCapacityAtSize, 1) : null
+  const loadRatio = correctedCapacityAtSize ? Math.min(perCableCurrent / correctedCapacityAtSize, 1) : null
 
   const { estimatedConductorTempC, ct } = voltageDropTemperatureCorrection(
     material,
-    designCurrent,
+    perCableCurrent,
     correctedCapacityAtSize,
     ambientTempC,
   )
 
   const rCorrected = entry.r * ct
   const phi = powerFactor !== undefined ? Math.acos(Math.min(Math.max(powerFactor, 0), 1)) : null
-  const mvPerAPerM =
+  const mvPerAPerMSingle =
     phi !== null && entry.x > 0
       ? rCorrected * Math.cos(phi) + entry.x * Math.sin(phi)
       : Math.sqrt(rCorrected * rCorrected + entry.x * entry.x)
+  const mvPerAPerM = mvPerAPerMSingle / parallelSets
 
   const voltDrop = (mvPerAPerM * designCurrent * lengthM) / 1000
   return {
+    mvPerAPerMSingle,
     mvPerAPerM,
     voltDrop,
     found: true,
+    perCableCurrent,
     tabulatedCapacityAtSize,
     correctedCapacityAtSize,
     loadRatio,
     estimatedConductorTempC,
     ct,
   }
+}
+
+export interface MaxAllowableCurrentResult {
+  maxVoltDropV: number
+  maxCurrentA: number | null // null if mvPerAPerM is 0 (no meaningful limit)
+}
+
+/** Reverse-calculates the max allowable voltage drop (V) and the current that would exactly hit it, for a given effective (combined) mV/A/m and route length. */
+export function calcMaxAllowableCurrent(
+  limitPercent: number,
+  systemVoltage: number,
+  effectiveMvPerAPerM: number,
+  lengthM: number,
+): MaxAllowableCurrentResult {
+  const maxVoltDropV = (limitPercent / 100) * systemVoltage
+  if (effectiveMvPerAPerM <= 0 || lengthM <= 0) return { maxVoltDropV, maxCurrentA: null }
+  const maxCurrentA = (maxVoltDropV * 1000) / (effectiveMvPerAPerM * lengthM)
+  return { maxVoltDropV, maxCurrentA }
 }
 
 export interface EarthSizingResult {
@@ -238,6 +277,7 @@ export interface VoltageDropPfcInput {
   installMethod: InstallMethod
   ambientTempC: number
   groupedCircuits: number
+  parallelSets?: number
   customMvPerAPerM?: number
 }
 
@@ -273,6 +313,7 @@ export function calcVoltageDropPfcImpact(input: VoltageDropPfcInput): VoltageDro
     installMethod,
     ambientTempC,
     groupedCircuits,
+    parallelSets,
     customMvPerAPerM,
   } = input
 
@@ -294,6 +335,7 @@ export function calcVoltageDropPfcImpact(input: VoltageDropPfcInput): VoltageDro
     installMethod,
     ambientTempC,
     groupedCircuits,
+    parallelSets,
     customMvPerAPerM,
   })
   const after = calcVoltageDropBS7671({
@@ -306,6 +348,7 @@ export function calcVoltageDropPfcImpact(input: VoltageDropPfcInput): VoltageDro
     installMethod,
     ambientTempC,
     groupedCircuits,
+    parallelSets,
     customMvPerAPerM,
   })
 

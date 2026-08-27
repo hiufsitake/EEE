@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { INSTALL_METHODS, BS7671_CABLE_SIZES_MM2, type ConductorMaterial, type CoreConfig, type InstallMethod } from '../calc/bs7671Tables'
-import { calcVoltageDropBS7671, calcVoltageDropPfcImpact } from '../calc/cable'
+import { calcMaxAllowableCurrent, calcVoltageDropBS7671, calcVoltageDropPfcImpact } from '../calc/cable'
+import { calcFlc } from '../calc/flc'
+import type { Phase } from '../calc/tables'
 import {
   Card,
   CheckboxField,
@@ -13,31 +15,60 @@ import {
   fmt,
 } from '../components/ui'
 
+type LoadInputMode = 'current' | 'kw'
+
 export default function VoltageDropCalculator() {
-  const [current, setCurrent] = useState(100)
-  const [lengthM, setLengthM] = useState(50)
-  const [sizeMm2, setSizeMm2] = useState(35)
-  const [coreConfig, setCoreConfig] = useState<CoreConfig>('threeOrFourCore')
-  const [material, setMaterial] = useState<ConductorMaterial>('copper')
-  const [usePf, setUsePf] = useState(false)
-  const [powerFactor, setPowerFactor] = useState(0.85)
+  // --- Load ---
+  const [loadInputMode, setLoadInputMode] = useState<LoadInputMode>('kw')
+  const [totalConnectedLoadKw, setTotalConnectedLoadKw] = useState(87.5)
+  const [efficiency, setEfficiency] = useState(0.95)
+  const [demandFactorPercent, setDemandFactorPercent] = useState(80)
+  const [directCurrent, setDirectCurrent] = useState(100)
   const [systemVoltage, setSystemVoltage] = useState(415)
+  const [coreConfig, setCoreConfig] = useState<CoreConfig>('threeOrFourCore')
+  const [powerFactor, setPowerFactor] = useState(0.85)
+  const [usePf, setUsePf] = useState(false)
+
+  const phase: Phase = coreConfig === 'threeOrFourCore' ? 3 : 1
+
+  const dutyLoadCurrent = useMemo(
+    () =>
+      calcFlc({
+        inputType: 'kW',
+        value: totalConnectedLoadKw,
+        voltage: systemVoltage,
+        phase,
+        powerFactor,
+        efficiency,
+        isMotor: true,
+      }).current,
+    [totalConnectedLoadKw, systemVoltage, phase, powerFactor, efficiency],
+  )
+  const kwModeCurrent = dutyLoadCurrent * (demandFactorPercent / 100)
+  const current = loadInputMode === 'kw' ? kwModeCurrent : directCurrent
+
+  // --- Cable & route ---
+  const [lengthM, setLengthM] = useState(50)
+  const [parallelSets, setParallelSets] = useState(1)
+  const [sizeMm2, setSizeMm2] = useState(35)
+  const [material, setMaterial] = useState<ConductorMaterial>('copper')
+  const [useCustomMv, setUseCustomMv] = useState(false)
+  const [customMvPerAPerM, setCustomMvPerAPerM] = useState(1.1)
 
   const [installMethod, setInstallMethod] = useState<InstallMethod>('C')
   const [ambientTempC, setAmbientTempC] = useState(30)
   const [groupedCircuits, setGroupedCircuits] = useState(1)
 
-  const [useCustomMv, setUseCustomMv] = useState(false)
-  const [customMvPerAPerM, setCustomMvPerAPerM] = useState(1.1)
-
-  const [checkPfc, setCheckPfc] = useState(false)
-  const [existingPfForPfc, setExistingPfForPfc] = useState(0.75)
-  const [targetPfForPfc, setTargetPfForPfc] = useState(0.95)
-
+  // --- Compliance limit ---
   const [limitStandard, setLimitStandard] = useState<'bs7671' | 'jkr' | 'custom'>('bs7671')
   const [customLimitPercent, setCustomLimitPercent] = useState(4)
   const limitPercent =
     limitStandard === 'bs7671' ? 5 : limitStandard === 'jkr' ? 4 : customLimitPercent
+
+  // --- PF correction ---
+  const [checkPfc, setCheckPfc] = useState(false)
+  const [existingPfForPfc, setExistingPfForPfc] = useState(0.85)
+  const [targetPfForPfc, setTargetPfForPfc] = useState(0.95)
 
   const result = useMemo(
     () =>
@@ -47,10 +78,11 @@ export default function VoltageDropCalculator() {
         sizeMm2,
         coreConfig,
         material,
-        powerFactor: usePf ? powerFactor : undefined,
+        powerFactor: loadInputMode === 'kw' || usePf ? powerFactor : undefined,
         installMethod,
         ambientTempC,
         groupedCircuits,
+        parallelSets,
         customMvPerAPerM: useCustomMv ? customMvPerAPerM : undefined,
       }),
     [
@@ -59,17 +91,29 @@ export default function VoltageDropCalculator() {
       sizeMm2,
       coreConfig,
       material,
+      loadInputMode,
       usePf,
       powerFactor,
       installMethod,
       ambientTempC,
       groupedCircuits,
+      parallelSets,
       useCustomMv,
       customMvPerAPerM,
     ],
   )
 
   const percentDrop = systemVoltage > 0 ? (result.voltDrop / systemVoltage) * 100 : 0
+  const { maxVoltDropV, maxCurrentA } = useMemo(
+    () => calcMaxAllowableCurrent(limitPercent, systemVoltage, result.mvPerAPerM, lengthM),
+    [limitPercent, systemVoltage, result.mvPerAPerM, lengthM],
+  )
+
+  const overLimit = maxCurrentA !== null && current > maxCurrentA
+  const rawSuggestedPf =
+    overLimit && maxCurrentA ? existingPfForPfc * (current / maxCurrentA) : existingPfForPfc
+  const suggestedPfImpossible = rawSuggestedPf >= 1
+  const suggestedTargetPf = suggestedPfImpossible ? 0.999 : rawSuggestedPf
 
   const pfcImpact = useMemo(
     () =>
@@ -79,7 +123,7 @@ export default function VoltageDropCalculator() {
             existingPf: existingPfForPfc,
             targetPf: targetPfForPfc,
             systemVoltage,
-            phase: coreConfig === 'threeOrFourCore' ? 3 : 1,
+            phase,
             lengthM,
             sizeMm2,
             coreConfig,
@@ -87,6 +131,7 @@ export default function VoltageDropCalculator() {
             installMethod,
             ambientTempC,
             groupedCircuits,
+            parallelSets,
             customMvPerAPerM: useCustomMv ? customMvPerAPerM : undefined,
           })
         : null,
@@ -96,13 +141,15 @@ export default function VoltageDropCalculator() {
       existingPfForPfc,
       targetPfForPfc,
       systemVoltage,
-      coreConfig,
+      phase,
       lengthM,
       sizeMm2,
+      coreConfig,
       material,
       installMethod,
       ambientTempC,
       groupedCircuits,
+      parallelSets,
       useCustomMv,
       customMvPerAPerM,
     ],
@@ -115,11 +162,96 @@ export default function VoltageDropCalculator() {
   return (
     <div className="space-y-4">
       <Card>
-        <SectionTitle>Voltage Drop</SectionTitle>
+        <SectionTitle>Load</SectionTitle>
+        <div className="mb-3">
+          <SelectField
+            id="loadmode"
+            label="Load Input"
+            value={loadInputMode}
+            onChange={setLoadInputMode}
+            options={[
+              { value: 'kw', label: 'From connected load (kW)' },
+              { value: 'current', label: 'Direct current (A)' },
+            ]}
+          />
+        </div>
+
+        {loadInputMode === 'kw' ? (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <NumberField
+                id="tcl"
+                label="Total Connected Load"
+                value={totalConnectedLoadKw}
+                onChange={setTotalConnectedLoadKw}
+                suffix="kW"
+              />
+              <NumberField id="efficiency" label="Efficiency" value={efficiency} onChange={setEfficiency} step={0.01} />
+              <NumberField
+                id="demandfactor"
+                label="Actual Load Demand"
+                value={demandFactorPercent}
+                onChange={setDemandFactorPercent}
+                suffix="%"
+              />
+              <NumberField id="pf" label="Power Factor" value={powerFactor} onChange={setPowerFactor} step={0.01} />
+              <NumberField id="voltage" label="System Voltage" value={systemVoltage} onChange={setSystemVoltage} suffix="V" />
+              <SelectField
+                id="core"
+                label="Circuit"
+                value={coreConfig}
+                onChange={setCoreConfig}
+                options={[
+                  { value: 'threeOrFourCore', label: '3-phase (3/4-core)' },
+                  { value: 'twoCore', label: '1-phase / DC (2-core)' },
+                ]}
+              />
+            </div>
+            <div className="mt-3">
+              <ResultGrid>
+                <ResultStat label="Duty Load Current" value={fmt(dutyLoadCurrent)} unit="A" />
+                <ResultStat label="Actual Design Current" value={fmt(kwModeCurrent)} unit="A" highlight />
+              </ResultGrid>
+            </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Duty Load Current = kW / (sqrt(3) x V x PF x efficiency); Actual Design Current
+              applies the demand factor (e.g. motors are often rated 20-30% above the load they
+              actually run at, to avoid overload).
+            </p>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <NumberField id="current" label="Load Current" value={directCurrent} onChange={setDirectCurrent} suffix="A" />
+            <NumberField id="voltage" label="System Voltage" value={systemVoltage} onChange={setSystemVoltage} suffix="V" />
+            <SelectField
+              id="core"
+              label="Circuit"
+              value={coreConfig}
+              onChange={setCoreConfig}
+              options={[
+                { value: 'threeOrFourCore', label: '3-phase (3/4-core)' },
+                { value: 'twoCore', label: '1-phase / DC (2-core)' },
+              ]}
+            />
+            <div className="flex items-center">
+              <CheckboxField
+                id="usepf"
+                label="Use load power factor (r cos-phi + x sin-phi)"
+                checked={usePf}
+                onChange={setUsePf}
+              />
+            </div>
+            {usePf && (
+              <NumberField id="pf" label="Power Factor" value={powerFactor} onChange={setPowerFactor} step={0.01} />
+            )}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle>Cable &amp; Route</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
           BS7671 Table 4D4B mV/A/m data (SWA/PVC 70C) - the same cable as Table 4D4A ampacity.
-          Uses tabulated impedance (z), or resistance/reactance combined with the circuit's
-          power factor (r cos-phi + x sin-phi) for cables 25mm2 and above.
         </p>
 
         <div className="mb-3">
@@ -132,41 +264,20 @@ export default function VoltageDropCalculator() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField id="current" label="Load Current" value={current} onChange={setCurrent} suffix="A" />
           <NumberField id="length" label="Route Length" value={lengthM} onChange={setLengthM} suffix="m" />
           <NumberField
-            id="voltage"
-            label="System Voltage"
-            value={systemVoltage}
-            onChange={setSystemVoltage}
-            suffix="V"
+            id="parallelsets"
+            label="Parallel Sets"
+            value={parallelSets}
+            onChange={(v) => setParallelSets(Math.max(1, Math.round(v)))}
+            step={1}
+            min={1}
           />
-          <SelectField
-            id="limitstandard"
-            label="Voltage Drop Limit"
-            value={limitStandard}
-            onChange={setLimitStandard}
-            options={[
-              { value: 'bs7671', label: 'BS7671 (5%)' },
-              { value: 'jkr', label: 'JKR / MS IEC 60364-5-52 (4%)' },
-              { value: 'custom', label: 'Custom' },
-            ]}
-          />
-          {limitStandard === 'custom' && (
-            <NumberField
-              id="customlimit"
-              label="Custom Limit"
-              value={customLimitPercent}
-              onChange={setCustomLimitPercent}
-              suffix="%"
-              step={0.1}
-            />
-          )}
 
           {useCustomMv ? (
             <NumberField
               id="custommv"
-              label="mV/A/m (from datasheet)"
+              label="mV/A/m per set (from datasheet)"
               value={customMvPerAPerM}
               onChange={setCustomMvPerAPerM}
               step={0.001}
@@ -181,16 +292,6 @@ export default function VoltageDropCalculator() {
                 options={BS7671_CABLE_SIZES_MM2.map((s) => ({ value: String(s), label: `${s} mm2` }))}
               />
               <SelectField
-                id="core"
-                label="Circuit"
-                value={coreConfig}
-                onChange={setCoreConfig}
-                options={[
-                  { value: 'threeOrFourCore', label: '3-phase (3/4-core)' },
-                  { value: 'twoCore', label: '1-phase / DC (2-core)' },
-                ]}
-              />
-              <SelectField
                 id="material"
                 label="Conductor Material"
                 value={material}
@@ -200,26 +301,18 @@ export default function VoltageDropCalculator() {
                   { value: 'aluminium', label: 'Aluminium' },
                 ]}
               />
-              <div className="flex items-center">
-                <CheckboxField
-                  id="usepf"
-                  label="Use load power factor (r cos-phi + x sin-phi)"
-                  checked={usePf}
-                  onChange={setUsePf}
-                />
-              </div>
-              {usePf && (
-                <NumberField
-                  id="pf"
-                  label="Power Factor"
-                  value={powerFactor}
-                  onChange={setPowerFactor}
-                  step={0.01}
-                />
-              )}
             </>
           )}
         </div>
+
+        {parallelSets > 1 && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {fmt(result.mvPerAPerMSingle, 3)} mV/A/m per set / {parallelSets} sets ={' '}
+            {fmt(result.mvPerAPerM, 3)} mV/A/m combined. Each cable carries {fmt(result.perCableCurrent)}A
+            (total current / {parallelSets}); if not using a custom mV/A/m value, remember the parallel
+            sets also count towards Grouped Circuits below, since they touch each other.
+          </p>
+        )}
 
         {!useCustomMv && (
           <>
@@ -249,6 +342,32 @@ export default function VoltageDropCalculator() {
 
       <Card>
         <SectionTitle>Result</SectionTitle>
+        <div className="mb-3">
+          <SelectField
+            id="limitstandard"
+            label="Voltage Drop Limit"
+            value={limitStandard}
+            onChange={setLimitStandard}
+            options={[
+              { value: 'bs7671', label: 'BS7671 (5%)' },
+              { value: 'jkr', label: 'JKR / MS IEC 60364-5-52 (4%)' },
+              { value: 'custom', label: 'Custom' },
+            ]}
+          />
+        </div>
+        {limitStandard === 'custom' && (
+          <div className="mb-3 max-w-xs">
+            <NumberField
+              id="customlimit"
+              label="Custom Limit"
+              value={customLimitPercent}
+              onChange={setCustomLimitPercent}
+              suffix="%"
+              step={0.1}
+            />
+          </div>
+        )}
+
         <ResultGrid>
           <ResultStat label="mV/A/m used" value={fmt(result.mvPerAPerM, 3)} />
           <ResultStat label="Voltage Drop" value={fmt(result.voltDrop)} unit="V" highlight />
@@ -257,15 +376,21 @@ export default function VoltageDropCalculator() {
             label={`Within ${fmt(limitPercent, 1)}% limit`}
             value={percentDrop <= limitPercent ? 'Yes' : 'No - oversize cable'}
           />
+          <ResultStat label="Max Allowable Voltage Drop" value={fmt(maxVoltDropV)} unit="V" />
+          <ResultStat
+            label="Max Allowable Current"
+            value={maxCurrentA !== null ? fmt(maxCurrentA) : 'N/A'}
+            unit="A"
+          />
           {!useCustomMv && (
             <>
               <ResultStat
-                label="Corrected capacity (Iz)"
+                label="Corrected capacity (Iz, per cable)"
                 value={result.correctedCapacityAtSize !== null ? fmt(result.correctedCapacityAtSize, 1) : 'N/A'}
                 unit="A"
               />
               <ResultStat
-                label="Load ratio (Ib/Iz)"
+                label="Load ratio (per cable)"
                 value={result.loadRatio !== null ? fmt(result.loadRatio * 100, 0) : 'N/A'}
                 unit="%"
               />
@@ -364,7 +489,28 @@ export default function VoltageDropCalculator() {
                 onChange={setTargetPfForPfc}
                 step={0.01}
               />
+              <div className="flex flex-col justify-end">
+                <button
+                  onClick={() => setTargetPfForPfc(Number(suggestedTargetPf.toFixed(3)))}
+                  disabled={!overLimit}
+                  className="rounded-md border border-sky-300 bg-sky-50 px-3 py-2.5 text-sm text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                >
+                  {overLimit
+                    ? `Use suggested PF (${fmt(suggestedTargetPf, 3)})`
+                    : 'Already within limit'}
+                </button>
+              </div>
             </div>
+
+            {overLimit && suggestedPfImpossible && (
+              <div className="mt-3">
+                <Note>
+                  Even correcting PF to ~1.0 would not be enough to meet the {fmt(limitPercent, 1)}%
+                  limit at this current/length/size - the cable itself needs to be upsized (or
+                  the route shortened), PF correction alone cannot fix it.
+                </Note>
+              </div>
+            )}
 
             {pfcImpact && (
               <div className="mt-4">
@@ -384,11 +530,7 @@ export default function VoltageDropCalculator() {
                     value={fmt(100 - (pfcImpact.newCurrent / Math.max(current, 1e-9)) * 100)}
                     unit="%"
                   />
-                  <ResultStat
-                    label="Voltage Drop: Before"
-                    value={fmt(pfcImpact.before.voltDrop)}
-                    unit="V"
-                  />
+                  <ResultStat label="Voltage Drop: Before" value={fmt(pfcImpact.before.voltDrop)} unit="V" />
                   <ResultStat
                     label="Voltage Drop: After"
                     value={fmt(pfcImpact.after.voltDrop)}
