@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
+import { INSTALL_METHODS, type InstallMethod } from '../calc/bs7671Tables'
 import { calcMotorPanel, getStartingFactorDefault, type MotorGroupInput } from '../calc/motorPanel'
-import { MOTOR_STARTING_FACTORS, type StartingMethodId } from '../calc/tables'
+import { MOTOR_STARTING_FACTORS, type Phase, type StartingMethodId } from '../calc/tables'
 import {
   Card,
-  CheckboxField,
   Label,
   NumberField,
   Note,
@@ -15,37 +15,40 @@ import {
 } from '../components/ui'
 
 let nextId = 1
-function makeMotor(kW = 15, quantity = 1, startingMethod: StartingMethodId = 'star-delta'): MotorGroupInput {
+function makeMotor(kW = 15, quantity = 1, phase: Phase = 3, startingMethod: StartingMethodId = 'star-delta'): MotorGroupInput {
   return {
     id: String(nextId++),
     kW,
     quantity,
+    phase,
     startingMethod,
     startingFactor: getStartingFactorDefault(startingMethod),
   }
 }
 
 export default function MotorPanelCalculator() {
-  const [motors, setMotors] = useState<MotorGroupInput[]>([makeMotor(15, 4, 'star-delta')])
+  const [motors, setMotors] = useState<MotorGroupInput[]>([makeMotor(15, 4, 3, 'star-delta')])
   const [voltage, setVoltage] = useState(415)
-  const [useAccurateFlc, setUseAccurateFlc] = useState(false)
   const [powerFactor, setPowerFactor] = useState(0.85)
   const [efficiency, setEfficiency] = useState(0.9)
   const [marginPercent, setMarginPercent] = useState(20)
-  const [longRun, setLongRun] = useState(false)
+  const [installMethod, setInstallMethod] = useState<InstallMethod>('C')
+  const [ambientTempC, setAmbientTempC] = useState(30)
+  const [groupedCircuits, setGroupedCircuits] = useState(1)
 
   const result = useMemo(
     () =>
       calcMotorPanel({
         motors,
         voltage,
-        useAccurateFlc,
         powerFactor,
         efficiency,
         marginPercent,
-        longRunOrHighAmbient: longRun,
+        installMethod,
+        ambientTempC,
+        groupedCircuits,
       }),
-    [motors, voltage, useAccurateFlc, powerFactor, efficiency, marginPercent, longRun],
+    [motors, voltage, powerFactor, efficiency, marginPercent, installMethod, ambientTempC, groupedCircuits],
   )
 
   function updateMotor(id: string, patch: Partial<MotorGroupInput>) {
@@ -65,47 +68,32 @@ export default function MotorPanelCalculator() {
       <Card>
         <SectionTitle>Motor Control Panel Sizing</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Incoming MCCB, cable and earth sizing for a panel feeding multiple motors, assuming
-          staggered (cascaded) starting.
+          Incoming MCCB, cable (BS7671 Table 4D4A) and earth sizing for a panel feeding multiple
+          single-phase and/or three-phase motors, assuming staggered (cascaded) starting.
         </p>
 
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <NumberField id="voltage" label="System Voltage" value={voltage} onChange={setVoltage} suffix="V" />
-          <div>
-            <Label>FLC Method</Label>
-            <div className="flex h-[38px] items-center gap-2 text-sm">
-              <CheckboxField
-                id="accurate"
-                label={useAccurateFlc ? 'Accurate (formula)' : 'Quick (kW x 2 @ 415V)'}
-                checked={useAccurateFlc}
-                onChange={setUseAccurateFlc}
-              />
-            </div>
-          </div>
-          {useAccurateFlc && (
-            <>
-              <NumberField
-                id="pf"
-                label="Power Factor"
-                value={powerFactor}
-                onChange={setPowerFactor}
-                step={0.01}
-              />
-              <NumberField
-                id="eff"
-                label="Motor Efficiency"
-                value={efficiency}
-                onChange={setEfficiency}
-                step={0.01}
-              />
-            </>
-          )}
+          <NumberField id="voltage" label="Panel Supply Voltage (L-L)" value={voltage} onChange={setVoltage} suffix="V" />
+          <NumberField id="pf" label="Power Factor" value={powerFactor} onChange={setPowerFactor} step={0.01} />
+          <NumberField id="eff" label="Motor Efficiency" value={efficiency} onChange={setEfficiency} step={0.01} />
+          <NumberField id="margin" label="Safety Margin" value={marginPercent} onChange={setMarginPercent} suffix="%" />
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SelectField
+            id="installMethod"
+            label="Cable Installation Method"
+            value={installMethod}
+            onChange={setInstallMethod}
+            options={INSTALL_METHODS.map((m) => ({ value: m.id, label: m.label }))}
+          />
+          <NumberField id="ambient" label="Ambient Temperature" value={ambientTempC} onChange={setAmbientTempC} suffix="C" />
           <NumberField
-            id="margin"
-            label="Safety Margin"
-            value={marginPercent}
-            onChange={setMarginPercent}
-            suffix="%"
+            id="grouped"
+            label="Grouped Circuits (touching)"
+            value={groupedCircuits}
+            onChange={(v) => setGroupedCircuits(Math.max(1, Math.round(v)))}
+            step={1}
           />
         </div>
 
@@ -125,11 +113,11 @@ export default function MotorPanelCalculator() {
             return (
               <div
                 key={m.id}
-                className="grid grid-cols-2 items-end gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-5 dark:border-slate-700"
+                className="grid grid-cols-2 items-end gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-6 dark:border-slate-700"
               >
                 <NumberField
                   id={`kw-${m.id}`}
-                  label="Rating"
+                  label="Rating (shaft)"
                   value={m.kW}
                   onChange={(v) => updateMotor(m.id, { kW: v })}
                   suffix="kW"
@@ -141,6 +129,16 @@ export default function MotorPanelCalculator() {
                   onChange={(v) => updateMotor(m.id, { quantity: Math.max(0, Math.round(v)) })}
                   min={0}
                   step={1}
+                />
+                <SelectField
+                  id={`phase-${m.id}`}
+                  label="Phase"
+                  value={String(m.phase) as '1' | '3'}
+                  onChange={(v) => updateMotor(m.id, { phase: Number(v) as Phase })}
+                  options={[
+                    { value: '3', label: '3-phase' },
+                    { value: '1', label: '1-phase' },
+                  ]}
                 />
                 <SelectField
                   id={`method-${m.id}`}
@@ -174,54 +172,39 @@ export default function MotorPanelCalculator() {
             )
           })}
         </div>
-
-        <div className="mt-3">
-          <CheckboxField
-            id="longrun"
-            label="Cable run > 50m or high ambient temperature (bump cable one size)"
-            checked={longRun}
-            onChange={setLongRun}
-          />
-        </div>
       </Card>
 
       <Card>
         <SectionTitle>Result</SectionTitle>
         <ResultGrid>
-          <ResultStat label="Total running FLC" value={fmt(result.totalRunningA)} unit="A" />
+          <ResultStat label="Total running load" value={fmt(result.totalRunningKva)} unit="kVA" />
+          <ResultStat label="Total running load" value={fmt(result.totalRunningKw)} unit="kW" />
           <ResultStat
             label="Worst-case starting surge"
-            value={fmt(result.worstCaseStartingUnit?.startingSurgeContributionA ?? 0)}
-            unit="A"
+            value={fmt(result.worstCaseStartingUnit?.startingSurgeKva ?? 0)}
+            unit="kVA"
           />
+          <ResultStat label="Required (before margin)" value={fmt(result.requiredKvaBeforeMargin)} unit="kVA" />
+          <ResultStat label="Required (with margin)" value={fmt(result.requiredKvaWithMargin)} unit="kVA" />
+          <ResultStat label="Incoming running current" value={fmt(result.incomingRunningA)} unit="A" />
+          <ResultStat label="Incoming MCCB" value={fmt(result.incomingMccbA, 0)} unit="A" highlight />
           <ResultStat
-            label="Required (before margin)"
-            value={fmt(result.requiredBeforeMarginA)}
-            unit="A"
-          />
-          <ResultStat
-            label="Required (with margin)"
-            value={fmt(result.requiredWithMarginA)}
-            unit="A"
-          />
-          <ResultStat
-            label="Incoming MCCB"
-            value={fmt(result.incomingMccbA, 0)}
-            unit="A"
-            highlight
-          />
-          <ResultStat
-            label="Incoming cable"
-            value={fmt(result.incomingCable.finalSizeMm2, 1)}
+            label="Incoming cable (BS7671)"
+            value={result.incomingCable.selectedSizeMm2 !== null ? fmt(result.incomingCable.selectedSizeMm2, 1) : 'N/A'}
             unit="mm2"
             highlight
           />
-          <ResultStat
-            label="Earth / CPC conductor"
-            value={fmt(result.incomingEarth.cpcMm2, 1)}
-            unit="mm2"
-          />
+          <ResultStat label="Earth / CPC conductor" value={fmt(result.incomingEarth.cpcMm2, 1)} unit="mm2" />
         </ResultGrid>
+
+        {result.incomingCable.selectedSizeMm2 !== null && (
+          <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Tabulated capacity {fmt(result.incomingCable.tabulatedCapacityAtSize ?? 0, 0)}A x Ca{' '}
+            {fmt(result.incomingCable.ambientFactor, 2)} x Cg {fmt(result.incomingCable.groupingFactor, 2)} = corrected
+            capacity {fmt(result.incomingCable.correctedCapacityAtSize ?? 0, 1)}A (must be at least the
+            running current, {fmt(result.incomingRunningA, 1)}A).
+          </div>
+        )}
 
         {result.incomingMccbExceedsTable && (
           <div className="mt-3">
@@ -231,15 +214,24 @@ export default function MotorPanelCalculator() {
             </Note>
           </div>
         )}
+        {result.incomingCable.selectedSizeMm2 === null && (
+          <div className="mt-3">
+            <Note>
+              Required current exceeds the BS7671 Table 4D4A range for this installation method -
+              consider parallel runs or busbar trunking.
+            </Note>
+          </div>
+        )}
 
         <div className="mt-3">
           <Note>
             Cascade (staggered) starting is assumed and mandatory: starting all motors at once
-            produces much higher combined inrush (each motor at FLC x starting factor
-            simultaneously) and will nuisance-trip the incoming MCCB and cause excessive voltage
-            dip. Cable/earth sizing use the field rule-of-thumb (I/4 up to 130A, I/2.5 above) and
-            the phase-based CPC rule - verify against full IEC 60364 ampacity tables for the
-            actual installation method, grouping and ambient temperature before finalizing.
+            produces much higher combined inrush and will nuisance-trip the incoming MCCB and
+            cause excessive voltage dip. Single-phase and three-phase loads are aggregated in kVA
+            (assuming single-phase loads are balanced across the three incoming phases) before
+            being converted back to the three-phase incomer current. Cable/earth sizing use
+            BS7671 Table 4D4A/4D4B (copper SWA/PVC) and Table 54.7 - verify installation method,
+            grouping and ambient temperature match the real site conditions.
           </Note>
         </div>
       </Card>

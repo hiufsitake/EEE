@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import CableCalculator from './calculators/CableCalculator'
+import FieldReference from './calculators/FieldReference'
 import FlcCalculator from './calculators/FlcCalculator'
 import GensetCalculator from './calculators/GensetCalculator'
 import MotorPanelCalculator from './calculators/MotorPanelCalculator'
@@ -17,6 +18,7 @@ const TOOLS = [
   { id: 'pfc', label: 'Power Factor Correction', icon: '🔁', Component: PfcCalculator },
   { id: 'transformer', label: 'Transformer Sizing', icon: '🔲', Component: TransformerCalculator },
   { id: 'ohm', label: "Ohm's Law & Power", icon: '📐', Component: OhmCalculator },
+  { id: 'reference', label: 'Field Reference (Rule of Thumb)', icon: '📋', Component: FieldReference },
 ] as const
 
 type ToolId = (typeof TOOLS)[number]['id']
@@ -74,9 +76,9 @@ function App() {
       <main className="min-w-0 flex-1 p-4 lg:p-6">
         <ActiveTool />
         <footer className="mt-8 pb-4 text-center text-xs text-slate-400 dark:text-slate-500">
-          Field-practice estimates for quick engineering guidance - always verify against the
-          applicable standards (IEC 60364 / BS7671 / local code) and manufacturer data before
-          finalizing a design.
+          Calculations use standard formulas and BS7671/IEC reference tables - always verify
+          installation-specific factors (method, grouping, ambient temperature) and manufacturer
+          data before finalizing a design.
         </footer>
       </main>
     </div>

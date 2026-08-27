@@ -1,76 +1,110 @@
 import { useMemo, useState } from 'react'
-import { sizeCableByRuleOfThumb, sizeEarthConductor } from '../calc/cable'
+import { INSTALL_METHODS, type CoreConfig, type InstallMethod } from '../calc/bs7671Tables'
+import { sizeCableBS7671, sizeEarthConductor } from '../calc/cable'
 import {
   Card,
-  CheckboxField,
   NumberField,
   Note,
   ResultGrid,
   ResultStat,
   SectionTitle,
+  SelectField,
   fmt,
 } from '../components/ui'
 
 export default function CableCalculator() {
   const [current, setCurrent] = useState(100)
-  const [longRun, setLongRun] = useState(false)
+  const [installMethod, setInstallMethod] = useState<InstallMethod>('C')
+  const [coreConfig, setCoreConfig] = useState<CoreConfig>('threeOrFourCore')
+  const [ambientTempC, setAmbientTempC] = useState(30)
+  const [groupedCircuits, setGroupedCircuits] = useState(1)
 
   const cable = useMemo(
-    () => sizeCableByRuleOfThumb({ current, longRunOrHighAmbient: longRun }),
-    [current, longRun],
+    () =>
+      sizeCableBS7671({
+        designCurrent: current,
+        installMethod,
+        coreConfig,
+        ambientTempC,
+        groupedCircuits,
+      }),
+    [current, installMethod, coreConfig, ambientTempC, groupedCircuits],
   )
-  const earth = useMemo(() => sizeEarthConductor(cable.finalSizeMm2), [cable.finalSizeMm2])
+  const earth = useMemo(
+    () => sizeEarthConductor(cable.selectedSizeMm2 ?? 0),
+    [cable.selectedSizeMm2],
+  )
 
   return (
     <div className="space-y-4">
       <Card>
         <SectionTitle>Cable &amp; Earth (CPC) Sizing</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Fast field rule-of-thumb for copper conductors (PVC/SWA/PVC): up to 130A use I/4, above
-          130A use I/2.5, because thicker cables dissipate heat less efficiently per mm2.
+          BS7671 Table 4D4A ampacity (copper, SWA/PVC 70C) with ambient temperature (Table 4B1)
+          and grouping (Table 4C1) correction factors: It = Ib / (Ca x Cg).
         </p>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField id="current" label="Design Current" value={current} onChange={setCurrent} suffix="A" />
-          <div className="flex items-center">
-            <CheckboxField
-              id="longrun"
-              label="Run > 50m or high ambient heat (bump one size)"
-              checked={longRun}
-              onChange={setLongRun}
-            />
-          </div>
+          <NumberField id="current" label="Design Current (Ib)" value={current} onChange={setCurrent} suffix="A" />
+          <SelectField
+            id="core"
+            label="Circuit"
+            value={coreConfig}
+            onChange={setCoreConfig}
+            options={[
+              { value: 'threeOrFourCore', label: '3-phase (3/4-core)' },
+              { value: 'twoCore', label: '1-phase / DC (2-core)' },
+            ]}
+          />
+          <SelectField
+            id="method"
+            label="Installation Method"
+            value={installMethod}
+            onChange={setInstallMethod}
+            options={INSTALL_METHODS.map((m) => ({ value: m.id, label: m.label }))}
+          />
+          <NumberField id="ambient" label="Ambient Temperature" value={ambientTempC} onChange={setAmbientTempC} suffix="C" />
+          <NumberField
+            id="grouped"
+            label="Grouped Circuits (touching)"
+            value={groupedCircuits}
+            onChange={(v) => setGroupedCircuits(Math.max(1, Math.round(v)))}
+            step={1}
+          />
         </div>
       </Card>
 
       <Card>
         <SectionTitle>Result</SectionTitle>
         <ResultGrid>
+          <ResultStat label="Ambient factor (Ca)" value={fmt(cable.ambientFactor, 2)} />
+          <ResultStat label="Grouping factor (Cg)" value={fmt(cable.groupingFactor, 2)} />
+          <ResultStat label="Required tabulated current" value={fmt(cable.requiredTabulatedCurrent)} unit="A" />
           <ResultStat
-            label="Rule used"
-            value={cable.breakpointRuleUsed === '/4' ? 'I / 4' : 'I / 2.5'}
-          />
-          <ResultStat label="Theoretical minimum" value={fmt(cable.theoreticalMinMm2, 2)} unit="mm2" />
-          <ResultStat label="Standard size" value={fmt(cable.standardSizeMm2, 1)} unit="mm2" />
-          <ResultStat
-            label="Final cable size"
-            value={fmt(cable.finalSizeMm2, 1)}
+            label="Selected cable size"
+            value={cable.selectedSizeMm2 !== null ? fmt(cable.selectedSizeMm2, 1) : 'N/A'}
             unit="mm2"
+            highlight
+          />
+          <ResultStat
+            label="Tabulated capacity"
+            value={cable.tabulatedCapacityAtSize !== null ? fmt(cable.tabulatedCapacityAtSize, 0) : 'N/A'}
+            unit="A"
+          />
+          <ResultStat
+            label="Corrected capacity (Iz)"
+            value={cable.correctedCapacityAtSize !== null ? fmt(cable.correctedCapacityAtSize, 1) : 'N/A'}
+            unit="A"
             highlight
           />
           <ResultStat label="Earth / CPC conductor" value={fmt(earth.cpcMm2, 1)} unit="mm2" highlight />
         </ResultGrid>
 
-        {cable.bumpedForDerating && (
-          <div className="mt-3">
-            <Note>Bumped one standard size up for long run / high ambient temperature.</Note>
-          </div>
-        )}
         {cable.exceedsTable && (
           <div className="mt-3">
             <Note>
-              Required size exceeds the standard single-core table - consider parallel runs or
-              busbar trunking.
+              Required current exceeds the BS7671 Table 4D4A range for this installation method -
+              consider parallel runs or busbar trunking.
             </Note>
           </div>
         )}
@@ -79,9 +113,9 @@ export default function CableCalculator() {
         </div>
         <div className="mt-3">
           <Note>
-            This is a quick field estimate, not a substitute for full IEC 60364 ampacity tables
-            (installation method, grouping, ambient temperature derating) - always verify against
-            the manufacturer's cable data sheet and local code for the final design.
+            Table 4D4A covers multicore armoured (SWA) 70C PVC-insulated copper cable. For other
+            constructions (single-core, XLPE/90C, aluminium) use the corresponding BS7671/IEC
+            table for that cable type.
           </Note>
         </div>
       </Card>
