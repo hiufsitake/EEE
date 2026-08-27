@@ -136,6 +136,47 @@ export type ConductorMaterial = 'copper' | 'aluminium'
 // so for a given nominal cross-section it is taken as unchanged; only resistance is scaled.
 export const ALUMINIUM_RESISTIVITY_RATIO = 1.64
 
+// Table 4D4A/4D4B reference conditions.
+export const RATED_CONDUCTOR_TEMP_C = 70 // 70C thermoplastic (PVC)
+export const REFERENCE_AMBIENT_C = 30 // ambient assumed by the tabulated (uncorrected) ampacity
+
+// Inferred absolute-zero-of-resistance offset used in the standard R2/R1 = (T0+t2)/(T0+t1)
+// temperature/resistance relationship (BS7671 Appendix 4 / IET On-Site Guide Ct factor).
+const INFERRED_ZERO_OFFSET: Record<ConductorMaterial, number> = {
+  copper: 234.5,
+  aluminium: 228,
+}
+
+export interface TemperatureCorrectionResult {
+  estimatedConductorTempC: number
+  ct: number // scales the resistive (r) component only - reactance is temperature-independent
+}
+
+/**
+ * BS7671 Appendix 4 "Ct" temperature correction for voltage drop: a cable loaded below its
+ * corrected current-carrying capacity (Iz) runs cooler than the table's rated conductor
+ * temperature, so its real resistance (and voltage drop) is lower than the tabulated value.
+ * Installation method/ambient/grouping matter here because they determine Iz.
+ *   t2 = ambient + (rated - reference ambient) x (Ib/Iz)^2
+ *   Ct = (T0 + t2) / (T0 + rated)
+ */
+export function voltageDropTemperatureCorrection(
+  material: ConductorMaterial,
+  designCurrentA: number,
+  correctedCapacityA: number | null,
+  ambientTempC: number,
+): TemperatureCorrectionResult {
+  if (!correctedCapacityA || correctedCapacityA <= 0) {
+    return { estimatedConductorTempC: RATED_CONDUCTOR_TEMP_C, ct: 1 }
+  }
+  const loadRatio = Math.min(designCurrentA / correctedCapacityA, 1)
+  const estimatedConductorTempC =
+    ambientTempC + (RATED_CONDUCTOR_TEMP_C - REFERENCE_AMBIENT_C) * loadRatio ** 2
+  const t0 = INFERRED_ZERO_OFFSET[material]
+  const ct = (t0 + estimatedConductorTempC) / (t0 + RATED_CONDUCTOR_TEMP_C)
+  return { estimatedConductorTempC, ct }
+}
+
 export function lookupVdEntry(
   core: CoreConfig,
   sizeMm2: number,

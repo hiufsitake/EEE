@@ -1,9 +1,11 @@
 import {
   BS7671_CABLE_SIZES_MM2,
+  RATED_CONDUCTOR_TEMP_C,
   ambientCorrectionFactor,
   groupingCorrectionFactor,
   lookupAmpacity,
   lookupVdEntry,
+  voltageDropTemperatureCorrection,
   type ConductorMaterial,
   type CoreConfig,
   type InstallMethod,
@@ -74,12 +76,25 @@ export interface VoltageDropTableInput {
   coreConfig: CoreConfig
   material: ConductorMaterial
   powerFactor?: number // if given (and size >= 25mm^2), uses r*cos(phi) + x*sin(phi); otherwise uses tabulated z
+  installMethod: InstallMethod
+  ambientTempC: number
+  groupedCircuits: number
+  // If given, use this mV/A/m value directly (e.g. from a manufacturer datasheet) instead of
+  // the BS7671 Table 4D4B lookup - skips the material derivation and Ct temperature correction,
+  // since neither the resistance/reactance split nor the operating condition are known for an
+  // arbitrary supplied figure.
+  customMvPerAPerM?: number
 }
 
 export interface VoltageDropTableResult {
-  mvPerAPerM: number // the value actually used (z, or r*cosphi+x*sinphi)
+  mvPerAPerM: number // the value actually used (z, or r*cosphi+x*sinphi), after the Ct correction
   voltDrop: number
   found: boolean
+  tabulatedCapacityAtSize: number | null
+  correctedCapacityAtSize: number | null // Iz = tabulated x Ca x Cg, at this install method/ambient/grouping
+  loadRatio: number | null // Ib / Iz, capped at 1
+  estimatedConductorTempC: number
+  ct: number
 }
 
 /**
@@ -87,18 +102,86 @@ export interface VoltageDropTableResult {
  * are the table's own published figures; aluminium values are derived from them by scaling
  * resistance by the IEC 60228 resistivity ratio (reactance is left unchanged - it depends on
  * conductor geometry/spacing, not material) - see calc/bs7671Tables.ts.
+ *
+ * The table's mV/A/m figures assume the conductor is at its full rated temperature (70C). A
+ * cable loaded below its actual (installation-method/ambient/grouping-corrected) capacity Iz
+ * runs cooler, so its real resistance and voltage drop are lower - the BS7671 Appendix 4 "Ct"
+ * factor corrects for this. This is why installation method matters here even though the base
+ * mV/A/m table itself does not vary by method.
  */
 export function calcVoltageDropBS7671(input: VoltageDropTableInput): VoltageDropTableResult {
-  const { designCurrent, lengthM, sizeMm2, coreConfig, material, powerFactor } = input
-  const entry = lookupVdEntry(coreConfig, sizeMm2, material)
-  if (!entry) return { mvPerAPerM: 0, voltDrop: 0, found: false }
+  const {
+    designCurrent,
+    lengthM,
+    sizeMm2,
+    coreConfig,
+    material,
+    powerFactor,
+    installMethod,
+    ambientTempC,
+    groupedCircuits,
+    customMvPerAPerM,
+  } = input
 
+  if (customMvPerAPerM !== undefined) {
+    return {
+      mvPerAPerM: customMvPerAPerM,
+      voltDrop: (customMvPerAPerM * designCurrent * lengthM) / 1000,
+      found: true,
+      tabulatedCapacityAtSize: null,
+      correctedCapacityAtSize: null,
+      loadRatio: null,
+      estimatedConductorTempC: RATED_CONDUCTOR_TEMP_C,
+      ct: 1,
+    }
+  }
+
+  const entry = lookupVdEntry(coreConfig, sizeMm2, material)
+  if (!entry) {
+    return {
+      mvPerAPerM: 0,
+      voltDrop: 0,
+      found: false,
+      tabulatedCapacityAtSize: null,
+      correctedCapacityAtSize: null,
+      loadRatio: null,
+      estimatedConductorTempC: 0,
+      ct: 1,
+    }
+  }
+
+  const tabulatedCapacityAtSize = lookupAmpacity(installMethod, coreConfig, sizeMm2)
+  const ambientFactor = ambientCorrectionFactor(ambientTempC)
+  const groupingFactor = groupingCorrectionFactor(groupedCircuits)
+  const correctedCapacityAtSize =
+    tabulatedCapacityAtSize !== null ? tabulatedCapacityAtSize * ambientFactor * groupingFactor : null
+  const loadRatio = correctedCapacityAtSize ? Math.min(designCurrent / correctedCapacityAtSize, 1) : null
+
+  const { estimatedConductorTempC, ct } = voltageDropTemperatureCorrection(
+    material,
+    designCurrent,
+    correctedCapacityAtSize,
+    ambientTempC,
+  )
+
+  const rCorrected = entry.r * ct
   const phi = powerFactor !== undefined ? Math.acos(Math.min(Math.max(powerFactor, 0), 1)) : null
   const mvPerAPerM =
-    phi !== null && entry.x > 0 ? entry.r * Math.cos(phi) + entry.x * Math.sin(phi) : entry.z
+    phi !== null && entry.x > 0
+      ? rCorrected * Math.cos(phi) + entry.x * Math.sin(phi)
+      : Math.sqrt(rCorrected * rCorrected + entry.x * entry.x)
 
   const voltDrop = (mvPerAPerM * designCurrent * lengthM) / 1000
-  return { mvPerAPerM, voltDrop, found: true }
+  return {
+    mvPerAPerM,
+    voltDrop,
+    found: true,
+    tabulatedCapacityAtSize,
+    correctedCapacityAtSize,
+    loadRatio,
+    estimatedConductorTempC,
+    ct,
+  }
 }
 
 export interface EarthSizingResult {
