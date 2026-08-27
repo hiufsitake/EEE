@@ -19,7 +19,8 @@ tables rather than field heuristics.
   correction factors (It = Ib / (Ca x Cg)). Earth/CPC sizing follows Table 54.7.
 - **Voltage Drop** - BS7671 Table 4D4B mV/A/m data for the same cable, using tabulated
   impedance or the resistance/reactance combined with the circuit's power factor
-  (r cos-phi + x sin-phi) for cables 25mm2 and above.
+  (r cos-phi + x sin-phi) for cables 25mm2 and above. Supports copper (published table values)
+  or aluminium (resistance scaled by the IEC 60228 resistivity ratio, reactance unchanged).
 - **Power Factor Correction** - required capacitor bank kVAR to reach a target power factor
   (Qc = P x (tan(phi1) - tan(phi2))).
 - **Transformer Sizing** - full load current and sizing from a connected load and demand factor.

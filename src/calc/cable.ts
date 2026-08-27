@@ -4,6 +4,7 @@ import {
   groupingCorrectionFactor,
   lookupAmpacity,
   lookupVdEntry,
+  type ConductorMaterial,
   type CoreConfig,
   type InstallMethod,
 } from './bs7671Tables'
@@ -71,6 +72,7 @@ export interface VoltageDropTableInput {
   lengthM: number
   sizeMm2: number
   coreConfig: CoreConfig
+  material: ConductorMaterial
   powerFactor?: number // if given (and size >= 25mm^2), uses r*cos(phi) + x*sin(phi); otherwise uses tabulated z
 }
 
@@ -80,10 +82,15 @@ export interface VoltageDropTableResult {
   found: boolean
 }
 
-/** Voltage drop from BS7671 Table 4D4B mV/A/m data for the same cable (Table 4D4A companion table). */
+/**
+ * Voltage drop from BS7671 Table 4D4B mV/A/m data (Table 4D4A companion table). Copper values
+ * are the table's own published figures; aluminium values are derived from them by scaling
+ * resistance by the IEC 60228 resistivity ratio (reactance is left unchanged - it depends on
+ * conductor geometry/spacing, not material) - see calc/bs7671Tables.ts.
+ */
 export function calcVoltageDropBS7671(input: VoltageDropTableInput): VoltageDropTableResult {
-  const { designCurrent, lengthM, sizeMm2, coreConfig, powerFactor } = input
-  const entry = lookupVdEntry(coreConfig, sizeMm2)
+  const { designCurrent, lengthM, sizeMm2, coreConfig, material, powerFactor } = input
+  const entry = lookupVdEntry(coreConfig, sizeMm2, material)
   if (!entry) return { mvPerAPerM: 0, voltDrop: 0, found: false }
 
   const phi = powerFactor !== undefined ? Math.acos(Math.min(Math.max(powerFactor, 0), 1)) : null

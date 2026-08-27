@@ -128,10 +128,28 @@ export function lookupAmpacity(
   return AMPACITY[method][core][idx]
 }
 
-export function lookupVdEntry(core: CoreConfig, sizeMm2: number): VdEntry | null {
+export type ConductorMaterial = 'copper' | 'aluminium'
+
+// IEC 60228 standard conductor resistivity ratio: aluminium's resistivity is ~1.64x copper's
+// (copper ~17.241 nOhm.m, aluminium ~28.264 nOhm.m at 20C - the ratio is independent of
+// temperature). Reactance per unit length depends on conductor geometry/spacing, not material,
+// so for a given nominal cross-section it is taken as unchanged; only resistance is scaled.
+export const ALUMINIUM_RESISTIVITY_RATIO = 1.64
+
+export function lookupVdEntry(
+  core: CoreConfig,
+  sizeMm2: number,
+  material: ConductorMaterial = 'copper',
+): VdEntry | null {
   const idx = BS7671_CABLE_SIZES_MM2.indexOf(sizeMm2)
   if (idx < 0) return null
-  return (core === 'twoCore' ? VD_SINGLE_PHASE : VD_THREE_PHASE)[idx]
+  const copperEntry = (core === 'twoCore' ? VD_SINGLE_PHASE : VD_THREE_PHASE)[idx]
+  if (material === 'copper') return copperEntry
+
+  const r = copperEntry.r * ALUMINIUM_RESISTIVITY_RATIO
+  const x = copperEntry.x
+  const z = x > 0 ? Math.sqrt(r * r + x * x) : copperEntry.z * ALUMINIUM_RESISTIVITY_RATIO
+  return { r, x, z }
 }
 
 /** Ambient temperature correction factor Ca, linearly interpolated between table points. */
