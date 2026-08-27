@@ -8,6 +8,7 @@ import OhmCalculator from './calculators/OhmCalculator'
 import PfcCalculator from './calculators/PfcCalculator'
 import TransformerCalculator from './calculators/TransformerCalculator'
 import VoltageDropCalculator from './calculators/VoltageDropCalculator'
+import InstallBanner from './components/InstallBanner'
 import { IdScope } from './components/ui'
 
 const TOOLS = [
@@ -93,6 +94,7 @@ function App() {
           data before finalizing a design.
         </footer>
       </main>
+      <InstallBanner />
     </div>
   )
 }
