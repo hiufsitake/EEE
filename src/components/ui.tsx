@@ -1,4 +1,17 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
+
+// Namespaces field ids so multiple calculators can stay mounted at once (to preserve their
+// input state when switching tabs) without colliding on ids like "voltage" or "phase".
+const IdNamespaceContext = createContext('')
+
+export function IdScope({ prefix, children }: { prefix: string; children: ReactNode }) {
+  return <IdNamespaceContext.Provider value={prefix}>{children}</IdNamespaceContext.Provider>
+}
+
+export function useNamespacedId(id: string): string {
+  const prefix = useContext(IdNamespaceContext)
+  return prefix ? `${prefix}-${id}` : id
+}
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
@@ -17,9 +30,10 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) {
+  const namespacedFor = useNamespacedId(htmlFor ?? '')
   return (
     <label
-      htmlFor={htmlFor}
+      htmlFor={htmlFor ? namespacedFor : undefined}
       className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-300"
     >
       {children}
@@ -44,12 +58,13 @@ export function NumberField({
   step?: number | 'any'
   min?: number
 }) {
+  const namespacedId = useNamespacedId(id)
   return (
     <div>
       <Label htmlFor={id}>{label}</Label>
       <div className="relative">
         <input
-          id={id}
+          id={namespacedId}
           type="number"
           inputMode="decimal"
           step={step}
@@ -81,11 +96,12 @@ export function SelectField<T extends string>({
   onChange: (v: T) => void
   options: { value: T; label: string }[]
 }) {
+  const namespacedId = useNamespacedId(id)
   return (
     <div>
       <Label htmlFor={id}>{label}</Label>
       <select
-        id={id}
+        id={namespacedId}
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
@@ -111,10 +127,11 @@ export function CheckboxField({
   checked: boolean
   onChange: (v: boolean) => void
 }) {
+  const namespacedId = useNamespacedId(id)
   return (
-    <label htmlFor={id} className="flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+    <label htmlFor={namespacedId} className="flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
       <input
-        id={id}
+        id={namespacedId}
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}

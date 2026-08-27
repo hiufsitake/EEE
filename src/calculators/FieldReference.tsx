@@ -61,6 +61,21 @@ export default function FieldReference() {
             </p>
           </Rule>
 
+          <Rule title="Recommended Starting Method by Motor Size">
+            <ul className="list-inside list-disc">
+              <li>Up to ~5.5kW: Direct-On-Line (DOL) is normally fine</li>
+              <li>~5.5kW - 37kW: Star-Delta or soft starter recommended</li>
+              <li>~37kW - 90kW: Soft starter or VFD recommended</li>
+              <li>Above ~90kW: VFD strongly preferred; DOL/star-delta starting current is usually too large for the supply</li>
+            </ul>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Rough guidance only - the actual limit depends on the supply's fault level, the
+              site's/utility's permitted voltage dip, and any specific utility approval
+              requirements for DOL starting above a given kW. Always check the local supply
+              authority's rules and the motor manufacturer's recommendation before finalizing.
+            </p>
+          </Rule>
+
           <Rule title="Quick Cable Sizing (copper, PVC/SWA/PVC)">
             <p>Up to 130A: cable size (mm2) ~= current (A) / 4</p>
             <p>Above 130A: cable size (mm2) ~= current (A) / 2.5</p>
@@ -89,12 +104,12 @@ export default function FieldReference() {
 
           <Rule title="Genset Sizing Margin">
             <p>
-              Size the generator for total running kVA plus the largest single motor's starting
-              surge, then add ~20-25% margin for safety/future growth.
+              Size the generator for Maximum Demand (as kVA) plus the largest single motor's
+              starting surge, then add ~20-25% margin for safety/future growth.
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              The Genset Sizing calculator computes this from an actual load schedule rather than
-              a flat guess - use this line only for a back-of-envelope check.
+              The Genset Sizing calculator computes this from the site's actual TCL/MD and motor
+              data rather than a flat guess - use this line only for a back-of-envelope check.
             </p>
           </Rule>
         </div>

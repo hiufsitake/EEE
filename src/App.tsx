@@ -8,6 +8,7 @@ import OhmCalculator from './calculators/OhmCalculator'
 import PfcCalculator from './calculators/PfcCalculator'
 import TransformerCalculator from './calculators/TransformerCalculator'
 import VoltageDropCalculator from './calculators/VoltageDropCalculator'
+import { IdScope } from './components/ui'
 
 const TOOLS = [
   { id: 'motor-panel', label: 'Motor Panel / MCCB Sizing', icon: '⚙️', Component: MotorPanelCalculator },
@@ -26,7 +27,6 @@ type ToolId = (typeof TOOLS)[number]['id']
 function App() {
   const [active, setActive] = useState<ToolId>('motor-panel')
   const [navOpen, setNavOpen] = useState(false)
-  const ActiveTool = TOOLS.find((t) => t.id === active)?.Component ?? MotorPanelCalculator
 
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
@@ -77,7 +77,13 @@ function App() {
       </nav>
 
       <main className="min-w-0 flex-1 p-4 lg:p-6">
-        <ActiveTool />
+        {TOOLS.map((t) => (
+          <div key={t.id} className={t.id === active ? '' : 'hidden'}>
+            <IdScope prefix={t.id}>
+              <t.Component />
+            </IdScope>
+          </div>
+        ))}
         <footer
           className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
