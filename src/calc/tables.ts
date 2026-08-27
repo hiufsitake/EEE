@@ -49,3 +49,7 @@ export const MOTOR_STARTING_FACTORS = [
 ] as const
 
 export type StartingMethodId = (typeof MOTOR_STARTING_FACTORS)[number]['id']
+
+export function getStartingFactorDefault(method: StartingMethodId): number {
+  return MOTOR_STARTING_FACTORS.find((m) => m.id === method)?.default ?? 1
+}

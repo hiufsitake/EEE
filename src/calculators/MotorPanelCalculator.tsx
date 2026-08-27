@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { INSTALL_METHODS, type InstallMethod } from '../calc/bs7671Tables'
-import { calcMotorPanel, getStartingFactorDefault, type MotorGroupInput } from '../calc/motorPanel'
-import { MOTOR_STARTING_FACTORS, type Phase, type StartingMethodId } from '../calc/tables'
+import type { DemandUnit } from '../calc/genset'
+import { calcMotorPanel } from '../calc/motorPanel'
+import { MOTOR_STARTING_FACTORS, getStartingFactorDefault, type StartingMethodId } from '../calc/tables'
 import {
   Card,
-  Label,
   NumberField,
   Note,
   ResultGrid,
@@ -14,23 +14,18 @@ import {
   fmt,
 } from '../components/ui'
 
-let nextId = 1
-function makeMotor(kW = 15, quantity = 1, phase: Phase = 3, startingMethod: StartingMethodId = 'star-delta'): MotorGroupInput {
-  return {
-    id: String(nextId++),
-    kW,
-    quantity,
-    phase,
-    startingMethod,
-    startingFactor: getStartingFactorDefault(startingMethod),
-  }
-}
-
 export default function MotorPanelCalculator() {
-  const [motors, setMotors] = useState<MotorGroupInput[]>([makeMotor(15, 4, 3, 'star-delta')])
   const [voltage, setVoltage] = useState(415)
-  const [powerFactor, setPowerFactor] = useState(0.85)
-  const [efficiency, setEfficiency] = useState(0.9)
+  const [totalConnectedLoadKw, setTotalConnectedLoadKw] = useState(90)
+  const [maxDemandValue, setMaxDemandValue] = useState(66.7)
+  const [maxDemandUnit, setMaxDemandUnit] = useState<DemandUnit>('kW')
+  const [loadPowerFactor, setLoadPowerFactor] = useState(0.85)
+
+  const [largestMotorKw, setLargestMotorKw] = useState(15)
+  const [largestMotorPf, setLargestMotorPf] = useState(0.85)
+  const [startingMethod, setStartingMethod] = useState<StartingMethodId>('star-delta')
+  const [startingFactor, setStartingFactor] = useState(getStartingFactorDefault('star-delta'))
+
   const [marginPercent, setMarginPercent] = useState(20)
   const [installMethod, setInstallMethod] = useState<InstallMethod>('C')
   const [ambientTempC, setAmbientTempC] = useState(30)
@@ -39,50 +34,125 @@ export default function MotorPanelCalculator() {
   const result = useMemo(
     () =>
       calcMotorPanel({
-        motors,
         voltage,
-        powerFactor,
-        efficiency,
+        totalConnectedLoadKw,
+        maxDemandValue,
+        maxDemandUnit,
+        loadPowerFactor,
+        largestMotorKw,
+        largestMotorPf,
+        startingFactor,
         marginPercent,
         installMethod,
         ambientTempC,
         groupedCircuits,
       }),
-    [motors, voltage, powerFactor, efficiency, marginPercent, installMethod, ambientTempC, groupedCircuits],
+    [
+      voltage,
+      totalConnectedLoadKw,
+      maxDemandValue,
+      maxDemandUnit,
+      loadPowerFactor,
+      largestMotorKw,
+      largestMotorPf,
+      startingFactor,
+      marginPercent,
+      installMethod,
+      ambientTempC,
+      groupedCircuits,
+    ],
   )
-
-  function updateMotor(id: string, patch: Partial<MotorGroupInput>) {
-    setMotors((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
-  }
-
-  function updateStartingMethod(id: string, method: StartingMethodId) {
-    setMotors((prev) =>
-      prev.map((m) =>
-        m.id === id ? { ...m, startingMethod: method, startingFactor: getStartingFactorDefault(method) } : m,
-      ),
-    )
-  }
 
   return (
     <div className="space-y-4">
       <Card>
         <SectionTitle>Motor Control Panel Sizing</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Incoming MCCB, cable (BS7671 Table 4D4A) and earth sizing for a panel feeding multiple
-          single-phase and/or three-phase motors, assuming staggered (cascaded) starting.
+          Incoming MCCB, cable (BS7671 Table 4D4A) and earth sizing from the panel's Total
+          Connected Load and Maximum Demand, plus the largest motor's starting-surge demand.
         </p>
 
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumberField id="voltage" label="Panel Supply Voltage (L-L)" value={voltage} onChange={setVoltage} suffix="V" />
-          <NumberField id="pf" label="Power Factor" value={powerFactor} onChange={setPowerFactor} step={0.01} />
-          <NumberField id="eff" label="Motor Efficiency" value={efficiency} onChange={setEfficiency} step={0.01} />
-          <NumberField id="margin" label="Safety Margin" value={marginPercent} onChange={setMarginPercent} suffix="%" />
+          <NumberField
+            id="tcl"
+            label="Total Connected Load (TCL)"
+            value={totalConnectedLoadKw}
+            onChange={setTotalConnectedLoadKw}
+            suffix="kW"
+          />
+          <NumberField
+            id="md"
+            label="Maximum Demand (MD)"
+            value={maxDemandValue}
+            onChange={setMaxDemandValue}
+            suffix={maxDemandUnit}
+          />
+          <SelectField
+            id="mdunit"
+            label="MD Unit"
+            value={maxDemandUnit}
+            onChange={setMaxDemandUnit}
+            options={[
+              { value: 'kW', label: 'kW' },
+              { value: 'kVA', label: 'kVA' },
+            ]}
+          />
+          {maxDemandUnit === 'kW' && (
+            <NumberField
+              id="loadpf"
+              label="Load Power Factor"
+              value={loadPowerFactor}
+              onChange={setLoadPowerFactor}
+              step={0.01}
+            />
+          )}
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-4 mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+          Largest Motor Within the Demand (for starting surge)
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <NumberField
+            id="motorkw"
+            label="Motor Rating"
+            value={largestMotorKw}
+            onChange={setLargestMotorKw}
+            suffix="kW"
+          />
+          <NumberField
+            id="motorpf"
+            label="Motor PF"
+            value={largestMotorPf}
+            onChange={setLargestMotorPf}
+            step={0.01}
+          />
+          <SelectField
+            id="method"
+            label="Starting Method"
+            value={startingMethod}
+            onChange={(v) => {
+              setStartingMethod(v)
+              setStartingFactor(getStartingFactorDefault(v))
+            }}
+            options={MOTOR_STARTING_FACTORS.map((s) => ({ value: s.id, label: s.label }))}
+          />
+          <NumberField
+            id="factor"
+            label="Starting Factor"
+            value={startingFactor}
+            onChange={setStartingFactor}
+            step={0.1}
+          />
+        </div>
+
+        <div className="mt-4 mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+          Incoming Cable
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SelectField
             id="installMethod"
-            label="Cable Installation Method"
+            label="Installation Method"
             value={installMethod}
             onChange={setInstallMethod}
             options={INSTALL_METHODS.map((m) => ({ value: m.id, label: m.label }))}
@@ -95,96 +165,22 @@ export default function MotorPanelCalculator() {
             onChange={(v) => setGroupedCircuits(Math.max(1, Math.round(v)))}
             step={1}
           />
-        </div>
-
-        <div className="mb-2 flex items-center justify-between">
-          <Label>Motors</Label>
-          <button
-            onClick={() => setMotors((prev) => [...prev, makeMotor()])}
-            className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
-          >
-            + Add motor group
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          {motors.map((m) => {
-            const unit = result.units.find((u) => u.groupId === m.id)
-            return (
-              <div
-                key={m.id}
-                className="grid grid-cols-2 items-end gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-6 dark:border-slate-700"
-              >
-                <NumberField
-                  id={`kw-${m.id}`}
-                  label="Rating (shaft)"
-                  value={m.kW}
-                  onChange={(v) => updateMotor(m.id, { kW: v })}
-                  suffix="kW"
-                />
-                <NumberField
-                  id={`qty-${m.id}`}
-                  label="Quantity"
-                  value={m.quantity}
-                  onChange={(v) => updateMotor(m.id, { quantity: Math.max(0, Math.round(v)) })}
-                  min={0}
-                  step={1}
-                />
-                <SelectField
-                  id={`phase-${m.id}`}
-                  label="Phase"
-                  value={String(m.phase) as '1' | '3'}
-                  onChange={(v) => updateMotor(m.id, { phase: Number(v) as Phase })}
-                  options={[
-                    { value: '3', label: '3-phase' },
-                    { value: '1', label: '1-phase' },
-                  ]}
-                />
-                <SelectField
-                  id={`method-${m.id}`}
-                  label="Starting Method"
-                  value={m.startingMethod}
-                  onChange={(v) => updateStartingMethod(m.id, v)}
-                  options={MOTOR_STARTING_FACTORS.map((s) => ({ value: s.id, label: s.label }))}
-                />
-                <NumberField
-                  id={`factor-${m.id}`}
-                  label="Starting Factor"
-                  value={m.startingFactor}
-                  onChange={(v) => updateMotor(m.id, { startingFactor: v })}
-                  step={0.1}
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    FLC/unit
-                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                      {unit ? fmt(unit.flcA) : '-'} A
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setMotors((prev) => prev.filter((x) => x.id !== m.id))}
-                    className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/40"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )
-          })}
+          <NumberField
+            id="margin"
+            label="Safety Margin"
+            value={marginPercent}
+            onChange={setMarginPercent}
+            suffix="%"
+          />
         </div>
       </Card>
 
       <Card>
         <SectionTitle>Result</SectionTitle>
         <ResultGrid>
-          <ResultStat label="Total running load" value={fmt(result.totalRunningKva)} unit="kVA" />
-          <ResultStat label="Total running load" value={fmt(result.totalRunningKw)} unit="kW" />
-          <ResultStat
-            label="Worst-case starting surge"
-            value={fmt(result.worstCaseStartingUnit?.startingSurgeKva ?? 0)}
-            unit="kVA"
-          />
-          <ResultStat label="Required (before margin)" value={fmt(result.requiredKvaBeforeMargin)} unit="kVA" />
+          <ResultStat label="Running load (from MD)" value={fmt(result.runningKva)} unit="kVA" />
+          <ResultStat label="Largest motor" value={fmt(result.largestMotorKva)} unit="kVA" />
+          <ResultStat label="Starting surge (extra)" value={fmt(result.startingSurgeKva)} unit="kVA" />
           <ResultStat label="Required (with margin)" value={fmt(result.requiredKvaWithMargin)} unit="kVA" />
           <ResultStat label="Incoming running current" value={fmt(result.incomingRunningA)} unit="A" />
           <ResultStat label="Incoming MCCB" value={fmt(result.incomingMccbA, 0)} unit="A" highlight />
@@ -225,13 +221,14 @@ export default function MotorPanelCalculator() {
 
         <div className="mt-3">
           <Note>
-            Cascade (staggered) starting is assumed and mandatory: starting all motors at once
-            produces much higher combined inrush and will nuisance-trip the incoming MCCB and
-            cause excessive voltage dip. Single-phase and three-phase loads are aggregated in kVA
-            (assuming single-phase loads are balanced across the three incoming phases) before
-            being converted back to the three-phase incomer current. Cable/earth sizing use
-            BS7671 Table 4D4A/4D4B (copper SWA/PVC) and Table 54.7 - verify installation method,
-            grouping and ambient temperature match the real site conditions.
+            Total Connected Load is recorded for reference only - Maximum Demand (which already
+            reflects diversity/coincidence factor) is what actually sizes the incomer. This
+            assumes the largest motor starts while the rest of the demand is already running
+            (staggered/cascaded starting) - starting everything at once produces much higher
+            combined inrush and will nuisance-trip the incoming MCCB and cause excessive voltage
+            dip. Cable/earth sizing use BS7671 Table 4D4A/4D4B (copper SWA/PVC) and Table 54.7 -
+            verify installation method, grouping and ambient temperature match the real site
+            conditions.
           </Note>
         </div>
       </Card>

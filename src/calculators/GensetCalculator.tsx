@@ -1,36 +1,28 @@
 import { useMemo, useState } from 'react'
-import { calcGensetSizing, type GensetLoadInput } from '../calc/genset'
+import { calcGensetSizing, type DemandUnit } from '../calc/genset'
+import { MOTOR_STARTING_FACTORS, getStartingFactorDefault, type StartingMethodId } from '../calc/tables'
 import {
   Card,
-  CheckboxField,
-  Label,
   NumberField,
   Note,
   ResultGrid,
   ResultStat,
   SectionTitle,
+  SelectField,
   fmt,
 } from '../components/ui'
 
-let nextId = 1
-function makeLoad(label = 'Load', kW = 10, quantity = 1, isMotor = false): GensetLoadInput {
-  return {
-    id: String(nextId++),
-    label,
-    kW,
-    quantity,
-    powerFactor: 0.85,
-    demandFactor: 1,
-    isMotor,
-    startingFactor: isMotor ? 6 : 1,
-  }
-}
-
 export default function GensetCalculator() {
-  const [loads, setLoads] = useState<GensetLoadInput[]>([
-    makeLoad('Motor load', 15, 4, true),
-    makeLoad('Lighting / small power', 8, 1, false),
-  ])
+  const [totalConnectedLoadKw, setTotalConnectedLoadKw] = useState(150)
+  const [maxDemandValue, setMaxDemandValue] = useState(90)
+  const [maxDemandUnit, setMaxDemandUnit] = useState<DemandUnit>('kW')
+  const [loadPowerFactor, setLoadPowerFactor] = useState(0.85)
+
+  const [largestMotorKw, setLargestMotorKw] = useState(15)
+  const [largestMotorPf, setLargestMotorPf] = useState(0.85)
+  const [startingMethod, setStartingMethod] = useState<StartingMethodId>('star-delta')
+  const [startingFactor, setStartingFactor] = useState(getStartingFactorDefault('star-delta'))
+
   const [gensetPowerFactor, setGensetPowerFactor] = useState(0.8)
   const [marginPercent, setMarginPercent] = useState(25)
   const [deratingPercent, setDeratingPercent] = useState(0)
@@ -38,28 +30,117 @@ export default function GensetCalculator() {
   const result = useMemo(
     () =>
       calcGensetSizing({
-        loads,
+        totalConnectedLoadKw,
+        maxDemandValue,
+        maxDemandUnit,
+        loadPowerFactor,
+        largestMotorKw,
+        largestMotorPf,
+        startingFactor,
         gensetPowerFactor,
         marginPercent,
         deratingFactor: 1 - deratingPercent / 100,
       }),
-    [loads, gensetPowerFactor, marginPercent, deratingPercent],
+    [
+      totalConnectedLoadKw,
+      maxDemandValue,
+      maxDemandUnit,
+      loadPowerFactor,
+      largestMotorKw,
+      largestMotorPf,
+      startingFactor,
+      gensetPowerFactor,
+      marginPercent,
+      deratingPercent,
+    ],
   )
-
-  function updateLoad(id: string, patch: Partial<GensetLoadInput>) {
-    setLoads((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
-  }
 
   return (
     <div className="space-y-4">
       <Card>
         <SectionTitle>Genset (Standby Generator) Sizing</SectionTitle>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Sizes a diesel generator from a load schedule, accounting for diversity and the
-          starting-surge demand of the largest motor load (staggered start assumed).
+          Sizes a diesel generator from the site's Total Connected Load and Maximum Demand,
+          accounting for the largest motor's starting-surge demand (staggered start assumed).
         </p>
 
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <NumberField
+            id="tcl"
+            label="Total Connected Load (TCL)"
+            value={totalConnectedLoadKw}
+            onChange={setTotalConnectedLoadKw}
+            suffix="kW"
+          />
+          <NumberField
+            id="md"
+            label="Maximum Demand (MD)"
+            value={maxDemandValue}
+            onChange={setMaxDemandValue}
+            suffix={maxDemandUnit}
+          />
+          <SelectField
+            id="mdunit"
+            label="MD Unit"
+            value={maxDemandUnit}
+            onChange={setMaxDemandUnit}
+            options={[
+              { value: 'kW', label: 'kW' },
+              { value: 'kVA', label: 'kVA' },
+            ]}
+          />
+          {maxDemandUnit === 'kW' && (
+            <NumberField
+              id="loadpf"
+              label="Load Power Factor"
+              value={loadPowerFactor}
+              onChange={setLoadPowerFactor}
+              step={0.01}
+            />
+          )}
+        </div>
+
+        <div className="mt-4 mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+          Largest Motor Within the Demand (for starting surge)
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <NumberField
+            id="motorkw"
+            label="Motor Rating"
+            value={largestMotorKw}
+            onChange={setLargestMotorKw}
+            suffix="kW"
+          />
+          <NumberField
+            id="motorpf"
+            label="Motor PF"
+            value={largestMotorPf}
+            onChange={setLargestMotorPf}
+            step={0.01}
+          />
+          <SelectField
+            id="method"
+            label="Starting Method"
+            value={startingMethod}
+            onChange={(v) => {
+              setStartingMethod(v)
+              setStartingFactor(getStartingFactorDefault(v))
+            }}
+            options={MOTOR_STARTING_FACTORS.map((s) => ({ value: s.id, label: s.label }))}
+          />
+          <NumberField
+            id="sf"
+            label="Starting Factor"
+            value={startingFactor}
+            onChange={setStartingFactor}
+            step={0.1}
+          />
+        </div>
+
+        <div className="mt-4 mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+          Generator
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumberField
             id="gpf"
             label="Genset Rated PF"
@@ -82,108 +163,16 @@ export default function GensetCalculator() {
             suffix="%"
           />
         </div>
-
-        <div className="mb-2 flex items-center justify-between">
-          <Label>Load Schedule</Label>
-          <button
-            onClick={() => setLoads((prev) => [...prev, makeLoad()])}
-            className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
-          >
-            + Add load
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          {loads.map((l) => {
-            const detail = result.loadDetails.find((d) => d.id === l.id)
-            return (
-              <div
-                key={l.id}
-                className="grid grid-cols-2 items-end gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-7 dark:border-slate-700"
-              >
-                <div className="col-span-2 sm:col-span-1">
-                  <Label htmlFor={`label-${l.id}`}>Description</Label>
-                  <input
-                    id={`label-${l.id}`}
-                    value={l.label}
-                    onChange={(e) => updateLoad(l.id, { label: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-sky-500 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                  />
-                </div>
-                <NumberField
-                  id={`kw-${l.id}`}
-                  label="kW / unit"
-                  value={l.kW}
-                  onChange={(v) => updateLoad(l.id, { kW: v })}
-                />
-                <NumberField
-                  id={`qty-${l.id}`}
-                  label="Qty"
-                  value={l.quantity}
-                  onChange={(v) => updateLoad(l.id, { quantity: Math.max(0, Math.round(v)) })}
-                  step={1}
-                />
-                <NumberField
-                  id={`pf-${l.id}`}
-                  label="PF"
-                  value={l.powerFactor}
-                  onChange={(v) => updateLoad(l.id, { powerFactor: v })}
-                  step={0.01}
-                />
-                <NumberField
-                  id={`demand-${l.id}`}
-                  label="Demand Factor"
-                  value={l.demandFactor}
-                  onChange={(v) => updateLoad(l.id, { demandFactor: v })}
-                  step={0.05}
-                />
-                <div>
-                  <CheckboxField
-                    id={`motor-${l.id}`}
-                    label="Motor load"
-                    checked={l.isMotor}
-                    onChange={(v) => updateLoad(l.id, { isMotor: v })}
-                  />
-                  {l.isMotor && (
-                    <div className="mt-1">
-                      <NumberField
-                        id={`sf-${l.id}`}
-                        label="Starting factor"
-                        value={l.startingFactor}
-                        onChange={(v) => updateLoad(l.id, { startingFactor: v })}
-                        step={0.5}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    Running
-                    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                      {detail ? fmt(detail.runningKva) : '-'} kVA
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setLoads((prev) => prev.filter((x) => x.id !== l.id))}
-                    className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/40"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
       </Card>
 
       <Card>
         <SectionTitle>Result</SectionTitle>
         <ResultGrid>
-          <ResultStat label="Total running load" value={fmt(result.totalRunningKw)} unit="kW" />
-          <ResultStat label="Total running kVA" value={fmt(result.totalRunningKva)} unit="kVA" />
+          <ResultStat label="Running load (from MD)" value={fmt(result.runningKva)} unit="kVA" />
+          <ResultStat label="Largest motor" value={fmt(result.largestMotorKva)} unit="kVA" />
           <ResultStat
-            label="Worst-case starting kVA"
-            value={fmt(result.requiredStartingKva)}
+            label="Starting surge (extra)"
+            value={fmt(result.startingSurgeKva)}
             unit="kVA"
           />
           <ResultStat
@@ -216,10 +205,12 @@ export default function GensetCalculator() {
 
         <div className="mt-3">
           <Note>
-            This sizes for steady-state running load plus the largest single motor's starting
-            surge (staggered starting assumed). For panels with multiple large motors that may
-            start together, or for step-load/frequency-dip requirements, verify against the
-            generator manufacturer's transient performance data.
+            Total Connected Load is recorded for reference only - Maximum Demand (which already
+            reflects diversity/coincidence factor) is what actually sizes the generator's running
+            capacity. This assumes the largest motor starts while the rest of the demand is
+            already running (staggered starting) - for multiple large motors that may start
+            together, or step-load/frequency-dip requirements, verify against the generator
+            manufacturer's transient performance data.
           </Note>
         </div>
       </Card>

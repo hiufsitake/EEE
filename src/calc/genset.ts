@@ -1,37 +1,24 @@
 import { roundUpToStandard, STANDARD_GENSET_SIZES_KVA } from './tables'
 
-export interface GensetLoadInput {
-  id: string
-  label: string
-  kW: number
-  quantity: number
-  powerFactor: number // load's own PF, used to convert kW -> kVA
-  demandFactor: number // 0-1, diversity/utilization factor for this load
-  isMotor: boolean
-  startingFactor: number // only used if isMotor
-}
+export type DemandUnit = 'kW' | 'kVA'
 
 export interface GensetSizingInput {
-  loads: GensetLoadInput[]
-  gensetPowerFactor: number // typical diesel genset rated PF, default 0.8
-  marginPercent: number // safety/future-growth margin, default 20-25
+  totalConnectedLoadKw: number // TCL - for reference/record only, not used in the sizing math
+  maxDemandValue: number // MD - the actual expected peak demand (already reflects diversity)
+  maxDemandUnit: DemandUnit
+  loadPowerFactor: number // used to convert MD to kVA when maxDemandUnit is 'kW'
+  largestMotorKw: number // largest single motor within the demand, for starting surge
+  largestMotorPf: number
+  startingFactor: number // motor starting current multiplier, from datasheet/nameplate
+  gensetPowerFactor: number // typical diesel genset rated PF, e.g. 0.8
+  marginPercent: number // safety/future-growth margin
   deratingFactor: number // altitude/temperature/fuel derating, 0-1 (1 = no derating)
 }
 
-export interface GensetLoadDetail {
-  id: string
-  label: string
-  runningKw: number
-  runningKva: number
-  startingSurgeKvaContribution: number // one unit's (startingFactor-1) x runningKva, if isMotor
-}
-
 export interface GensetSizingResult {
-  loadDetails: GensetLoadDetail[]
-  totalRunningKw: number
-  totalRunningKva: number
-  worstCaseStartingLoad: GensetLoadDetail | null
-  requiredStartingKva: number
+  runningKva: number
+  largestMotorKva: number
+  startingSurgeKva: number
   requiredKvaBeforeMargin: number
   requiredKvaWithMargin: number
   requiredKvaAfterDerating: number
@@ -41,41 +28,32 @@ export interface GensetSizingResult {
 }
 
 /**
- * Genset (standby/prime diesel generator) sizing from a load schedule.
- * Mirrors the motor-panel staggered-start logic: the generator must cover the sum of all
- * running loads plus the extra starting-surge demand of whichever single motor load causes
- * the largest jump above its own running kVA (assumes staggered/soft starting of large motors,
- * not all-at-once DOL starting).
+ * Genset (standby/prime diesel generator) sizing from Total Connected Load (TCL, recorded for
+ * reference only) and Maximum Demand (MD, the actual expected running load - already reflects
+ * diversity/coincidence factor). The generator must cover MD plus the extra starting-surge
+ * demand of the largest motor within that demand (assuming other loads are already running
+ * when it starts).
  */
 export function calcGensetSizing(input: GensetSizingInput): GensetSizingResult {
-  const { loads, marginPercent, deratingFactor } = input
+  const {
+    maxDemandValue,
+    maxDemandUnit,
+    loadPowerFactor,
+    largestMotorKw,
+    largestMotorPf,
+    startingFactor,
+    gensetPowerFactor,
+    marginPercent,
+    deratingFactor,
+  } = input
 
-  const loadDetails: GensetLoadDetail[] = loads.map((l) => {
-    const runningKwPerUnit = l.kW * l.demandFactor
-    const runningKvaPerUnit = runningKwPerUnit / Math.max(l.powerFactor, 0.01)
-    const runningKw = runningKwPerUnit * l.quantity
-    const runningKva = runningKvaPerUnit * l.quantity
-    const startingSurgeKvaContribution = l.isMotor
-      ? runningKvaPerUnit * (l.startingFactor - 1)
-      : 0
-    return { id: l.id, label: l.label, runningKw, runningKva, startingSurgeKvaContribution }
-  })
+  const runningKva =
+    maxDemandUnit === 'kVA' ? maxDemandValue : maxDemandValue / Math.max(loadPowerFactor, 0.01)
 
-  const totalRunningKw = loadDetails.reduce((s, l) => s + l.runningKw, 0)
-  const totalRunningKva = loadDetails.reduce((s, l) => s + l.runningKva, 0)
+  const largestMotorKva = largestMotorKw / Math.max(largestMotorPf, 0.01)
+  const startingSurgeKva = Math.max(largestMotorKva * (startingFactor - 1), 0)
 
-  let worstCaseStartingLoad: GensetLoadDetail | null = null
-  for (const l of loadDetails) {
-    if (
-      !worstCaseStartingLoad ||
-      l.startingSurgeKvaContribution > worstCaseStartingLoad.startingSurgeKvaContribution
-    ) {
-      worstCaseStartingLoad = l
-    }
-  }
-
-  const requiredStartingKva = totalRunningKva + (worstCaseStartingLoad?.startingSurgeKvaContribution ?? 0)
-  const requiredKvaBeforeMargin = Math.max(totalRunningKva, requiredStartingKva)
+  const requiredKvaBeforeMargin = runningKva + startingSurgeKva
   const requiredKvaWithMargin = requiredKvaBeforeMargin * (1 + marginPercent / 100)
   const requiredKvaAfterDerating = requiredKvaWithMargin / Math.max(deratingFactor, 0.01)
 
@@ -83,14 +61,12 @@ export function calcGensetSizing(input: GensetSizingInput): GensetSizingResult {
     requiredKvaAfterDerating,
     STANDARD_GENSET_SIZES_KVA,
   )
-  const recommendedGensetKw = recommendedGensetKva * input.gensetPowerFactor
+  const recommendedGensetKw = recommendedGensetKva * gensetPowerFactor
 
   return {
-    loadDetails,
-    totalRunningKw,
-    totalRunningKva,
-    worstCaseStartingLoad,
-    requiredStartingKva,
+    runningKva,
+    largestMotorKva,
+    startingSurgeKva,
     requiredKvaBeforeMargin,
     requiredKvaWithMargin,
     requiredKvaAfterDerating,
