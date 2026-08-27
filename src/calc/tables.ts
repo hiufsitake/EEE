@@ -53,3 +53,16 @@ export type StartingMethodId = (typeof MOTOR_STARTING_FACTORS)[number]['id']
 export function getStartingFactorDefault(method: StartingMethodId): number {
   return MOTOR_STARTING_FACTORS.find((m) => m.id === method)?.default ?? 1
 }
+
+/**
+ * Rough field guidance for a typical starting method by motor size (see the Field Reference
+ * page): DOL up to ~5.5kW, star-delta up to ~37kW, soft starter up to ~90kW, VFD above that.
+ * The actual choice always depends on the supply's fault level and the site/utility's permitted
+ * voltage dip - this is only a sensible default to prefill, not a substitute for that check.
+ */
+export function recommendedStartingMethod(motorKw: number): StartingMethodId {
+  if (motorKw <= 5.5) return 'dol'
+  if (motorKw <= 37) return 'star-delta'
+  if (motorKw <= 90) return 'soft-starter'
+  return 'vfd'
+}

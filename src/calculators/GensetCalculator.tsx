@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react'
 import { calcGensetSizing, type DemandUnit } from '../calc/genset'
-import { MOTOR_STARTING_FACTORS, getStartingFactorDefault, type StartingMethodId } from '../calc/tables'
+import {
+  MOTOR_STARTING_FACTORS,
+  getStartingFactorDefault,
+  recommendedStartingMethod,
+  type StartingMethodId,
+} from '../calc/tables'
 import {
   Card,
   NumberField,
@@ -103,12 +108,21 @@ export default function GensetCalculator() {
         <div className="mt-4 mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
           Largest Motor Within the Demand (for starting surge)
         </div>
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+          Starting Method auto-suggests from the motor rating - override it if the actual
+          starter differs.
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumberField
             id="motorkw"
             label="Motor Rating"
             value={largestMotorKw}
-            onChange={setLargestMotorKw}
+            onChange={(v) => {
+              setLargestMotorKw(v)
+              const recommended = recommendedStartingMethod(v)
+              setStartingMethod(recommended)
+              setStartingFactor(getStartingFactorDefault(recommended))
+            }}
             suffix="kW"
           />
           <NumberField
