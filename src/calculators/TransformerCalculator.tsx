@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { calcTransformerFla, sizeTransformer } from '../calc/transformer'
+import type { DemandUnit } from '../calc/genset'
 import type { Phase } from '../calc/tables'
 import {
   Card,
@@ -17,9 +18,13 @@ export default function TransformerCalculator() {
   const [phase, setPhase] = useState<Phase>(3)
   const fla = useMemo(() => calcTransformerFla({ kva, voltage, phase }), [kva, voltage, phase])
 
-  const [connectedLoadKva, setConnectedLoadKva] = useState(600)
+  const [connectedLoadValue, setConnectedLoadValue] = useState(510)
+  const [connectedLoadUnit, setConnectedLoadUnit] = useState<DemandUnit>('kW')
+  const [connectedLoadPf, setConnectedLoadPf] = useState(0.85)
   const [demandFactor, setDemandFactor] = useState(0.8)
   const [marginPercent, setMarginPercent] = useState(20)
+  const connectedLoadKva =
+    connectedLoadUnit === 'kVA' ? connectedLoadValue : connectedLoadValue / Math.max(connectedLoadPf, 0.01)
   const sizing = useMemo(
     () => sizeTransformer({ connectedLoadKva, demandFactor, marginPercent }),
     [connectedLoadKva, demandFactor, marginPercent],
@@ -56,10 +61,29 @@ export default function TransformerCalculator() {
           <NumberField
             id="connected"
             label="Total Connected Load"
-            value={connectedLoadKva}
-            onChange={setConnectedLoadKva}
-            suffix="kVA"
+            value={connectedLoadValue}
+            onChange={setConnectedLoadValue}
+            suffix={connectedLoadUnit}
           />
+          <SelectField
+            id="connectedunit"
+            label="Load Unit"
+            value={connectedLoadUnit}
+            onChange={setConnectedLoadUnit}
+            options={[
+              { value: 'kW', label: 'kW' },
+              { value: 'kVA', label: 'kVA' },
+            ]}
+          />
+          {connectedLoadUnit === 'kW' && (
+            <NumberField
+              id="connectedpf"
+              label="Load Power Factor"
+              value={connectedLoadPf}
+              onChange={setConnectedLoadPf}
+              step={0.01}
+            />
+          )}
           <NumberField
             id="demand"
             label="Demand / Diversity Factor"
