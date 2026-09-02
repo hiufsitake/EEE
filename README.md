@@ -11,11 +11,13 @@ verify against the actual Malaysian-approved cable manufacturer's datasheet for 
 ## Calculators
 
 - **Motor Panel / MCCB Sizing** - incoming MCCB, cable and earth sizing for a panel from its
-  Total Connected Load (TCL, recorded for reference) and Maximum Demand (MD, the actual
-  diversified running load), plus the largest motor's starting-surge demand. Assumes
+  Total Connected Load (TCL) and Maximum Demand (MD, the actual diversified running load - a
+  "Use TCL x DF" button derives it from TCL and a Diversity Factor, or MD can be entered
+  directly if already known), plus the largest motor's starting-surge demand. Assumes
   staggered/cascaded motor starting.
 - **Genset Sizing** - standby/prime diesel generator sizing from Total Connected Load and
-  Maximum Demand, accounting for the largest motor's starting-surge demand.
+  Maximum Demand (with the same TCL x Diversity Factor derivation), accounting for the largest
+  motor's starting-surge demand.
 - **Full Load Current (FLC)** - current drawn by a load from kW, kVA or HP rating, any
   voltage/phase/power factor/efficiency.
 - **Cable & Earth (CPC) Sizing** - IEC 60364-5-52 ampacity method (MS IEC 60364-5-52 / BS7671

@@ -19,9 +19,12 @@ import {
 
 export default function GensetCalculator() {
   const [totalConnectedLoadKw, setTotalConnectedLoadKw] = useState(150)
+  const [diversityFactor, setDiversityFactor] = useState(0.8)
   const [maxDemandValue, setMaxDemandValue] = useState(90)
   const [maxDemandUnit, setMaxDemandUnit] = useState<DemandUnit>('kW')
   const [loadPowerFactor, setLoadPowerFactor] = useState(0.85)
+
+  const calculatedMdKw = totalConnectedLoadKw * diversityFactor
 
   const [largestMotorKw, setLargestMotorKw] = useState(15)
   const [largestMotorPf, setLargestMotorPf] = useState(0.85)
@@ -78,6 +81,13 @@ export default function GensetCalculator() {
             suffix="kW"
           />
           <NumberField
+            id="diversity"
+            label="Diversity Factor"
+            value={diversityFactor}
+            onChange={setDiversityFactor}
+            step={0.05}
+          />
+          <NumberField
             id="md"
             label="Maximum Demand (MD)"
             value={maxDemandValue}
@@ -103,6 +113,17 @@ export default function GensetCalculator() {
               step={0.01}
             />
           )}
+          <div className="flex items-end">
+            <button
+              onClick={() => {
+                setMaxDemandValue(Number(calculatedMdKw.toFixed(2)))
+                setMaxDemandUnit('kW')
+              }}
+              className="w-full rounded-md border border-sky-300 bg-sky-50 px-3 py-2.5 text-sm text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+            >
+              Use TCL x DF ({fmt(calculatedMdKw)} kW)
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -219,9 +240,10 @@ export default function GensetCalculator() {
 
         <div className="mt-3">
           <Note>
-            Total Connected Load is recorded for reference only - Maximum Demand (which already
-            reflects diversity/coincidence factor) is what actually sizes the generator's running
-            capacity. This assumes the largest motor starts while the rest of the demand is
+            Maximum Demand (which reflects diversity/coincidence factor) is what actually sizes
+            the generator's running capacity - use "Use TCL x DF" to derive it from Total
+            Connected Load, or enter a Maximum Demand already known from elsewhere. This assumes
+            the largest motor starts while the rest of the demand is
             already running (staggered starting) - for multiple large motors that may start
             together, or step-load/frequency-dip requirements, verify against the generator
             manufacturer's transient performance data.
